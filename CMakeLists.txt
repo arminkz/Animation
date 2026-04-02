@@ -54,6 +54,8 @@ file(GLOB SOURCES
     src/gui/*.cpp
     src/scene/*.cpp
     src/scene/content/*.cpp
+    src/scene/content/flag/*.cpp
+    src/scene/physics/*.cpp
     src/vulkan/*.cpp
     src/vulkan/resources/*.cpp
 )

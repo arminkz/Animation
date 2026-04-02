@@ -2,27 +2,30 @@
 
 #include "vulkan/VulkanHelper.h"
 
-DeviceMesh::DeviceMesh(std::shared_ptr<VulkanContext> ctx, const HostMesh& mesh, bool dynamic)
-    : _ctx(std::move(ctx)), _dynamic(dynamic)
+DeviceMesh::DeviceMesh(std::shared_ptr<VulkanContext> ctx, const HostMesh& mesh, VertexBufferMode mode)
+    : _ctx(std::move(ctx)), _mode(mode)
 {
     _indexCount = static_cast<uint32_t>(mesh.indices.size());
     createVertexBuffer(mesh);
     createIndexBuffer(mesh);
 }
 
+
 void DeviceMesh::update(const HostMesh& mesh)
 {
+    assert(_mode == VertexBufferMode::Dynamic && "update() is only valid for Dynamic meshes");
     VkDeviceSize size = sizeof(mesh.vertices[0]) * mesh.vertices.size();
     _vertexBuffer->copyData(mesh.vertices.data(), size);
 }
+
 
 void DeviceMesh::createVertexBuffer(const HostMesh& mesh)
 {
     VkDeviceSize bufferSize = sizeof(mesh.vertices[0]) * mesh.vertices.size();
 
-    if (_dynamic)
+    if (_mode == VertexBufferMode::Dynamic)
     {
-        // Host-visible buffer kept persistently mapped — CPU writes directly each frame
+        // Host-visible buffer kept persistently mapped — CPU can write directly to the buffer
         _vertexBuffer = std::make_unique<Buffer>(_ctx,
             bufferSize,
             VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
@@ -32,7 +35,10 @@ void DeviceMesh::createVertexBuffer(const HostMesh& mesh)
     }
     else
     {
-        // Staging -> device-local (optimal for static meshes)
+        // Staging -> device-local (Static and ComputeWritable both start with a one-time CPU upload)
+        VkBufferUsageFlags usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+        if (_mode == VertexBufferMode::ComputeWritable) usage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
+
         Buffer staging(_ctx,
             bufferSize,
             VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
@@ -42,13 +48,14 @@ void DeviceMesh::createVertexBuffer(const HostMesh& mesh)
 
         _vertexBuffer = std::make_unique<Buffer>(_ctx,
             bufferSize,
-            VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+            usage,
             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
         VulkanHelper::copyBuffer(_ctx, staging.getBuffer(), _vertexBuffer->getBuffer(), bufferSize);
         // staging goes out of scope here — Buffer destructor cleans it up
     }
 }
+
 
 void DeviceMesh::createIndexBuffer(const HostMesh& mesh)
 {

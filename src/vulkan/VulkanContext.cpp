@@ -238,6 +238,12 @@ void VulkanContext::createLogicalDevice() {
     deviceFeatures.fillModeNonSolid   = VK_TRUE; // Enable wireframe rendering
     deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
+    // Vulkan 1.2 specific device features
+    VkPhysicalDeviceVulkan12Features deviceFeatures12{};
+    deviceFeatures12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
+    deviceFeatures12.scalarBlockLayout = VK_TRUE; // Enable scalarBlockLayout so GLSL SSBOs can match packed C++ Vertex structs (vec3s) without padding mismatches
+    deviceCreateInfo.pNext = &deviceFeatures12;
+
     if (vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device) != VK_SUCCESS) {
         throw std::runtime_error("Failed to create logical device!");
     }
@@ -254,11 +260,13 @@ void VulkanContext::createDescriptorPool() {
     // Descriptor usage counts per type
     uint32_t totalUBOs = 100;
     uint32_t totalSamplers = 70;
-    uint32_t maxSets = 50;
+    uint32_t totalSSBOs = 50;
+    uint32_t maxSets = 100;
 
     std::vector<VkDescriptorPoolSize> poolSizes = {
         { VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, totalUBOs },
-        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, totalSamplers }
+        { VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, totalSamplers },
+        { VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, totalSSBOs}
     };
 
     VkDescriptorPoolCreateInfo poolInfo{};

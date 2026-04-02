@@ -44,7 +44,10 @@ struct PipelineParams
 class Pipeline
 {
 public:
-    Pipeline(std::shared_ptr<VulkanContext> ctx, const std::string& vertShaderPath, const std::string& fragShaderPath, const PipelineParams& params);
+    Pipeline(std::shared_ptr<VulkanContext> ctx, 
+             const std::string& vertShaderPath, 
+             const std::string& fragShaderPath, 
+             const PipelineParams& params);
     ~Pipeline();
 
     VkPipeline getPipeline() const { return _pipeline; }

@@ -11,7 +11,13 @@ public:
         : _ctx(std::move(ctx)), _swapChain(std::move(swapChain)) {}
     virtual ~Renderer() = default;
     
-    virtual void update() = 0; // called every frame
+    // Update Logic
+    virtual void update() = 0; 
+
+    // Compute Operations (Optional)
+    virtual void dispatchCompute(VkCommandBuffer commandBuffer) {}
+
+    // Graphics Operations
     virtual void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) = 0;
     virtual void onSwapChainRecreated() { }
     void setCurrentFrame(uint32_t frameIndex) { _currentFrame = frameIndex; } // (0 < currentFrame < MAX_FRAMES_IN_FLIGHT)

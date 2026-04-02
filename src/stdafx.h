@@ -25,6 +25,7 @@
 #include "imgui_impl_vulkan.h"
 
 // [Standard libraries: basic]
+#include <cassert>
 #include <algorithm>
 #include <cmath>
 #include <chrono>

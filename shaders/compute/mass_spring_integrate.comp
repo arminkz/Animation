@@ -1,0 +1,182 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 64) in;
+
+// ------------------------------------------------------------
+// Data structures — must match C++ MSParticle / MSSpring
+// ------------------------------------------------------------
+
+struct Particle {
+    vec3 position;
+    vec3 prevPosition;
+    vec3 normal;
+    vec2 uv;
+    float invMass;
+};
+
+struct ParticleMetadata {
+    uint springStartIndex;
+    uint springCount;
+};
+
+struct Spring {
+    int neighborIndex;
+    float restLength, ratio;
+};
+
+struct VertexTriMetadata {
+    uint triStartIndex;
+    uint triCount;
+};
+
+struct Triangle {
+    uint a, b, c;
+};
+
+// ------------------------------------------------------------
+// Bindings
+// ------------------------------------------------------------
+
+layout(scalar, set = 0, binding = 0) uniform SimParamsUBO {
+    int   numParticles;                                    // Size
+    float dt, time;                                        // Elapsed / Absolute time
+    float stiffness, velocityDamping, springDamping;       // Mass-spring parameters
+    vec3  windDir;                                         // Wind
+    float windEnabled, windTurbulence, windStrength, windDragCoeff;
+    int   gravityEnabled;                                  // Gravity
+    float _pad;
+} params;
+
+layout(scalar, set = 0, binding = 1) readonly buffer ParticleBufferIn {
+    Particle particlesIn[];
+};
+
+layout(scalar, set = 0, binding = 2) readonly buffer ParticleMetadataBuffer {
+    ParticleMetadata particleMetadata[];
+};
+
+layout(scalar, set = 0, binding = 3) readonly buffer SpringBuffer {
+    Spring springs[];
+};
+
+layout(scalar, set = 0, binding = 4) readonly buffer VertexTriMetaBuffer {
+    VertexTriMetadata vertexTriMeta[];
+};
+
+layout(scalar, set = 0, binding = 5) readonly buffer TriangleBuffer {
+    Triangle triangles[];
+};
+
+layout(scalar, set = 0, binding = 6) writeonly buffer ParticleBufferOut {
+    Particle particlesOut[];
+};
+
+// ------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------
+
+float hash01(int n) {
+    uint u = uint(n);
+    u = (u ^ 2747636419u) * 2654435769u;
+    u ^= u >> 16u;
+    u *= 2654435769u;
+    return float(u >> 8u) / float(1u << 24u);
+}
+
+// ------------------------------------------------------------
+// Main
+// ------------------------------------------------------------
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (int(id) >= params.numParticles) return;
+
+    Particle p = particlesIn[id];
+
+    // Pinned particles: just mirror position to output buffer
+    if (p.invMass == 0.0) {
+        particlesOut[id] = p;
+        return;
+    }
+
+    // Accumulate acceleration
+    vec3 acc = vec3(0.0);
+
+    // Gravity
+    if (params.gravityEnabled != 0) {
+        acc += vec3(0.0, -9.8, 0.0);
+    }
+
+    // Spring forces via adjacency list
+    ParticleMetadata meta = particleMetadata[id];
+    for (uint j = 0; j < meta.springCount; ++j) {
+        Spring s  = springs[meta.springStartIndex + j];
+        vec3 pb = particlesIn[s.neighborIndex].position;
+        vec3 delta = pb - p.position;
+        float len = length(delta);
+        if (len < 1e-6) continue;
+        vec3 dir = delta / len;
+
+        // Hooke: F = ratio * k * (len - rest) * dir
+        vec3 springForce = s.ratio * params.stiffness * (len - s.restLength) * dir;
+
+        // Spring damping along spring axis
+        vec3 relVel = (pb - particlesIn[s.neighborIndex].prevPosition)
+                    - (p.position - p.prevPosition);
+        springForce += params.springDamping * dot(relVel, dir) * dir;
+
+        acc += springForce * p.invMass;
+    }
+
+    // Wind
+    if (params.windEnabled != 0) {
+        // Use stored normal from previous substep — good enough approximation for drag
+        vec3 faceNorm = p.normal;
+
+        // Gust: smoothstep noise
+        float gt = params.time * 0.45;
+        int gti = int(floor(gt));
+        float f = gt - float(gti);
+        float smf = f * f * (3.0 - 2.0 * f);
+        float gust = params.windStrength * (0.55 + 0.9 * mix(hash01(gti), hash01(gti + 1), smf));
+
+        // Per-particle turbulence
+        float tx = sin(params.time * 2.3 + p.position.x * 0.7)
+                 + sin(params.time * 1.1 + p.position.y * 1.3) * 0.5;
+        float ty = cos(params.time * 1.7 + p.position.y * 0.9)
+                 + cos(params.time * 3.1 + p.position.x * 0.4) * 0.4;
+        float tz = sin(params.time * 2.7 + p.position.x * 0.5 + p.position.y * 0.6);
+        vec3 windVel = gust * params.windDir + vec3(tx, ty, tz) * params.windTurbulence;
+
+        // Particle velocity (Verlet approximation)
+        vec3 particleVel = (p.position - p.prevPosition) / params.dt;
+        vec3 vRel        = windVel - particleVel;
+
+        acc += params.windDragCoeff * dot(vRel, faceNorm) * faceNorm * p.invMass;
+    }
+
+    // --- Verlet integration ---
+    vec3 vel    = (p.position - p.prevPosition) * params.velocityDamping;
+    vec3 newPos = p.position + vel + acc * (params.dt * params.dt);
+
+    // --- Recompute normal from triangle adjacency list (topology-agnostic) ---
+    vec3 vNormal = vec3(0.0);
+    VertexTriMetadata triMeta = vertexTriMeta[id];
+    for (uint j = 0; j < triMeta.triCount; ++j) {
+        Triangle tri = triangles[triMeta.triStartIndex + j];
+        vec3 a = particlesIn[tri.a].position;
+        vec3 b = particlesIn[tri.b].position;
+        vec3 c = particlesIn[tri.c].position;
+        vNormal += cross(b - a, c - a);
+    }
+    float nLen = length(vNormal);
+    if (nLen > 1e-6) vNormal /= nLen;
+
+    // --- Write output particle ---
+    particlesOut[id].position     = newPos;
+    particlesOut[id].prevPosition = p.position;
+    particlesOut[id].normal       = vNormal;
+    particlesOut[id].uv           = p.uv;
+    particlesOut[id].invMass      = p.invMass;
+}

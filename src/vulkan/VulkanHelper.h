@@ -87,6 +87,9 @@ namespace VulkanHelper {
     
     std::string imageLayoutToString(VkImageLayout layout);
 
+    void barrierComputeToCompute(VkCommandBuffer cmd);
+    void barrierComputeToVertex(VkCommandBuffer cmd, VkBuffer vertexBuffer);
+
     uint32_t alignedSize(uint32_t value, uint32_t alignment);
 
     VkFormat convertToUnormFormat(VkFormat format);

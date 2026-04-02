@@ -1,5 +1,6 @@
 #include "core/FramePresenter.h"
-#include "scene/content/ClothScene.h"
+#include "scene/content/flag/FlagScene.h"
+#include "scene/content/table/TableScene.h"
 
 FramePresenter::FramePresenter(std::shared_ptr<VulkanContext> ctx)
     : _ctx(std::move(ctx))
@@ -7,13 +8,14 @@ FramePresenter::FramePresenter(std::shared_ptr<VulkanContext> ctx)
     spdlog::info("Max Frames in flight: {}", MAX_FRAMES_IN_FLIGHT);
 
     _swapChain = std::make_shared<SwapChain>(_ctx);
-    _renderer = std::make_unique<ClothScene>(_ctx, _swapChain);
+    _renderer = std::make_unique<FlagScene>(_ctx, _swapChain);
     _gui = std::make_unique<GUI>(_ctx, _ctx->window, _swapChain->getSwapChainImageFormat());
 
     createCommandBuffers();
     createSyncObjects();
     createGUIFramebuffers();
 }
+
 
 FramePresenter::~FramePresenter()
 {
@@ -23,6 +25,7 @@ FramePresenter::~FramePresenter()
     destroyGUIFramebuffers();
     destroySyncObjects();
 }
+
 
 void FramePresenter::createCommandBuffers() {
     // Allocate command buffer
@@ -40,6 +43,7 @@ void FramePresenter::createCommandBuffers() {
         spdlog::info("Command buffers allocated successfully");
     }
 }
+
 
 void FramePresenter::createSyncObjects() {
     _imageAvailableSemaphores.resize(_swapChain->getSwapChainImageCount());
@@ -67,6 +71,7 @@ void FramePresenter::createSyncObjects() {
     }
 }
 
+
 void FramePresenter::destroySyncObjects() {
     for (auto sem : _imageAvailableSemaphores)
         vkDestroySemaphore(_ctx->device, sem, nullptr);
@@ -78,6 +83,7 @@ void FramePresenter::destroySyncObjects() {
     _renderFinishedSemaphores.clear();
     _inFlightFences.clear();
 }
+
 
 void FramePresenter::createGUIFramebuffers()
 {
@@ -101,12 +107,14 @@ void FramePresenter::createGUIFramebuffers()
 
 }
 
+
 void FramePresenter::destroyGUIFramebuffers()
 {
     for (auto fb : _guiFramebuffers)
         vkDestroyFramebuffer(_ctx->device, fb, nullptr);
     _guiFramebuffers.clear();
 }
+
 
 void FramePresenter::invalidate()
 {
@@ -133,6 +141,7 @@ void FramePresenter::invalidate()
     _renderer->onSwapChainRecreated();
 }
 
+
 void FramePresenter::present() {
     // Wait for the previous frame to finish
     vkWaitForFences(_ctx->device, 1, &_inFlightFences[_frameCounter], VK_TRUE, UINT64_MAX);
@@ -156,6 +165,7 @@ void FramePresenter::present() {
     // Build ImGui frame
     _gui->beginFrame();
     _gui->buildUI();
+    buildSceneSelector();
     _renderer->buildUI();
 
     // Update Scene
@@ -169,6 +179,9 @@ void FramePresenter::present() {
         spdlog::error("Failed to begin recording command buffer!");
         return;
     }
+
+    // Dispatch compute operations
+    _renderer->dispatchCompute(_commandBuffers[_frameCounter]);
 
     // Record scene and GUI into the same command buffer, then end it
     _renderer->recordToCommandBuffer(_commandBuffers[_frameCounter], imageIndex);
@@ -223,6 +236,30 @@ void FramePresenter::present() {
     _frameCounter = (_frameCounter + 1) % MAX_FRAMES_IN_FLIGHT;
     _imageCounter = (_imageCounter + 1) % _swapChain->getSwapChainImageCount();
 }
+
+
+void FramePresenter::buildSceneSelector()
+{
+    static const char* sceneNames[] = { "Flag" };
+
+    ImGui::Begin("Scene");
+    int prev = _selectedScene;
+    if (ImGui::Combo("Scene", &_selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
+        if (_selectedScene != prev)
+            switchScene(_selectedScene);
+    ImGui::End();
+}
+
+
+void FramePresenter::switchScene(int index)
+{
+    vkDeviceWaitIdle(_ctx->device);
+    spdlog::info("Switching scene...");
+    switch (index) {
+        case 0: _renderer = std::make_unique<FlagScene>(_ctx, _swapChain);  break;
+    }
+}
+
 
 void FramePresenter::handleEvent(SDL_Event* event) {
     // Always forward to ImGui so it can update its input state

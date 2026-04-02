@@ -45,7 +45,12 @@ private:
 
     uint32_t _frameCounter = 0;
     uint32_t _imageCounter = 0;
-        
+
+    // Scene selection
+    int _selectedScene = 0;
+    void buildSceneSelector();
+    void switchScene(int index);
+
     // Called when the window is resized
     void invalidate();
 
