@@ -10,12 +10,14 @@ struct CpuSpring {
 };
 
 ClothSimulation::ClothSimulation(std::shared_ptr<VulkanContext> ctx,
-                                 int rows, int cols, float spacing)
+                                 int rows, int cols, float spacing,
+                                 ClothPinMode pinMode,
+                                 glm::mat4 initialTransform)
     : MassSpringSimulation(std::move(ctx))
 {
     auto idx = [&](int r, int c) { return r * cols + c; };
 
-    // --- Build particle grid ---
+    // Build particle grid
     std::vector<MSParticle> particles(rows * cols);
     for (int r = 0; r < rows; ++r)
     {
@@ -32,11 +34,13 @@ ClothSimulation::ClothSimulation(std::shared_ptr<VulkanContext> ctx,
             particles[i].normal       = glm::vec3(0.f, 0.f, 1.f);
             particles[i].uv           = glm::vec2((float)c / (cols - 1),
                                                    1.0f - (float)r / (rows - 1));
-            particles[i].invMass      = (c == 0) ? 0.f : 1.f; // pin first column
+            bool pinned = (pinMode == ClothPinMode::LeftColumn && c == 0) ||
+                          (pinMode == ClothPinMode::TopEdge   && r == rows - 1);
+            particles[i].invMass = pinned ? 0.f : 1.f;
         }
     }
 
-    // --- Build springs ---
+    // Build springs
     std::vector<CpuSpring> cpuSprings;
     auto addSpring = [&](int a, int b, float ratio, SpringType type)
     {
@@ -57,7 +61,7 @@ ClothSimulation::ClothSimulation(std::shared_ptr<VulkanContext> ctx,
         }
     }
 
-    // --- Build index buffer ---
+    // Build index buffer
     std::vector<uint32_t> indices;
     for (int r = 0; r < rows - 1; ++r)
     {
@@ -70,7 +74,7 @@ ClothSimulation::ClothSimulation(std::shared_ptr<VulkanContext> ctx,
         }
     }
 
-    // --- Build directed spring adjacency list ---
+    // Build directed spring adjacency list
     uint32_t numParticles = static_cast<uint32_t>(particles.size());
     std::vector<MSParticleMetadata> metadata(numParticles);
     std::vector<MSSpring>           directedSprings;
@@ -87,6 +91,14 @@ ClothSimulation::ClothSimulation(std::shared_ptr<VulkanContext> ctx,
                 directedSprings.push_back({ s.a, s.restLength, s.ratio });
         }
         metadata[p].springCount = static_cast<uint32_t>(directedSprings.size()) - metadata[p].springStartIndex;
+    }
+
+    // Apply initial transform to particle positions and normals
+    glm::mat3 normalMatrix = glm::mat3(initialTransform);
+    for (auto& p : particles) {
+        p.position     = glm::vec3(initialTransform * glm::vec4(p.position, 1.f));
+        p.prevPosition = p.position;
+        p.normal       = glm::normalize(normalMatrix * p.normal);
     }
 
     init(particles, metadata, directedSprings, indices,

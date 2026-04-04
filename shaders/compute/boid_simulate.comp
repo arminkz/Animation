@@ -1,0 +1,163 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 64) in;
+
+struct BoidState {
+    vec3  position;
+    float _p0;
+    vec3  velocity;
+    float _p1;
+};
+
+layout(scalar, set = 0, binding = 0) uniform Params {
+    uint  nBoids;
+    float dt;
+    float rs;
+    float ra;
+    float rc;
+    float ws, wa, wc;
+    float minSpeed, maxSpeed;
+    float wrapRange;
+    float cellSize;
+    uint  gridDim;
+    uint  totalCells;
+} params;
+
+layout(scalar, set = 0, binding = 1) readonly buffer InBoids {
+    BoidState inBoids[];
+};
+
+layout(scalar, set = 0, binding = 2) writeonly buffer OutBoids {
+    BoidState outBoids[];
+};
+
+layout(set = 0, binding = 3) readonly buffer GridCounts {
+    uint gridCounts[];
+};
+
+layout(set = 0, binding = 4) readonly buffer GridBoids {
+    uint gridBoids[];
+};
+
+layout(scalar, set = 0, binding = 5) writeonly buffer Transforms {
+    mat4 transforms[];
+};
+
+#define MAX_PER_CELL 64
+
+void main() {
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= params.nBoids) return;
+
+    vec3 pos     = inBoids[i].position;
+    vec3 vel     = inBoids[i].velocity;
+    vec3 heading = normalize(vel);
+
+    vec3  sepForce  = vec3(0.0);
+    int   sepCount  = 0;
+    vec3  aliVel    = vec3(0.0);
+    int   aliCount  = 0;
+    vec3  cohCenter = vec3(0.0);
+    int   cohCount  = 0;
+
+    // Determine which cell this boid is in
+    ivec3 myCell = ivec3(floor((pos + params.wrapRange) / params.cellSize));
+    myCell = clamp(myCell, ivec3(0), ivec3(int(params.gridDim) - 1));
+
+    // How many shells to check for each radius
+    int sepShells = int(ceil(params.rs / params.cellSize));
+    int aliShells = int(ceil(params.ra / params.cellSize));
+    int cohShells = int(ceil(params.rc / params.cellSize));
+    int shells = max(sepShells, max(aliShells, cohShells));
+
+    // Iterate over neighbouring cells
+    for (int dz = -shells; dz <= shells; ++dz) {
+        for (int dy = -shells; dy <= shells; ++dy) {
+            for (int dx = -shells; dx <= shells; ++dx) {
+                ivec3 nc = myCell + ivec3(dx, dy, dz);
+                // Skip out-of-bounds cells (no torus wrap on grid)
+                if (any(lessThan(nc, ivec3(0))) || any(greaterThanEqual(nc, ivec3(int(params.gridDim)))))
+                    continue;
+
+                uint cellIdx = uint(nc.x)
+                             + uint(nc.y) * params.gridDim
+                             + uint(nc.z) * params.gridDim * params.gridDim;
+
+                uint count = min(gridCounts[cellIdx], uint(MAX_PER_CELL));
+                for (uint s = 0; s < count; ++s) {
+                    uint j = gridBoids[cellIdx * MAX_PER_CELL + s];
+                    if (j == i) continue;
+
+                    vec3  diff = pos - inBoids[j].position;
+                    float dist = length(diff);
+                    if (dist < 1e-4) continue;
+
+                    if (dist < params.rs) {
+                        sepForce += diff / (dist * dist);
+                        ++sepCount;
+                    }
+                    if (dist < params.ra) {
+                        aliVel += inBoids[j].velocity;
+                        ++aliCount;
+                    }
+                    if (dist < params.rc) {
+                        cohCenter += inBoids[j].position;
+                        ++cohCount;
+                    }
+                }
+            }
+        }
+    }
+
+    // --- Steering ---
+    vec3 steer = vec3(0.0);
+
+    if (sepCount > 0)
+        steer += params.ws * normalize(sepForce);
+
+    if (aliCount > 0)
+        steer += params.wa * normalize(aliVel / float(aliCount));
+
+    if (cohCount > 0) {
+        vec3 toCenter = cohCenter / float(cohCount) - pos;
+        if (length(toCenter) > 1e-4)
+            steer += params.wc * normalize(toCenter);
+    }
+
+    // Integrate
+    vec3 newVel = vel + steer * params.dt;
+    float speed = length(newVel);
+    if (speed > 1e-4)
+        newVel = normalize(newVel) * clamp(speed, params.minSpeed, params.maxSpeed);
+    else
+        newVel = vel;
+
+    vec3 newPos = pos + newVel * params.dt;
+
+    // Wrap around spawn volume (torus)
+    for (int k = 0; k < 3; ++k) {
+        if (newPos[k] >  params.wrapRange) newPos[k] -= 2.0 * params.wrapRange;
+        if (newPos[k] < -params.wrapRange) newPos[k] += 2.0 * params.wrapRange;
+    }
+
+    outBoids[i].position = newPos;
+    outBoids[i]._p0      = 0.0;
+    outBoids[i].velocity = newVel;
+    outBoids[i]._p1      = 0.0;
+
+    // --- Build boidMatrix (heading = +Z, up = +Y, right = +X) ---
+    vec3 h = normalize(newVel);
+    vec3 worldUp = (abs(dot(h, vec3(0.0, 1.0, 0.0))) > 0.99)
+                   ? vec3(0.0, 0.0, 1.0)
+                   : vec3(0.0, 1.0, 0.0);
+    vec3 right = normalize(cross(worldUp, h));
+    vec3 up    = cross(h, right);
+
+    transforms[i] = mat4(
+        vec4(right,  0.0),
+        vec4(up,     0.0),
+        vec4(h,      0.0),
+        vec4(newPos, 1.0)
+    );
+}

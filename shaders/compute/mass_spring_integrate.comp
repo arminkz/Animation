@@ -4,7 +4,7 @@
 layout(local_size_x = 64) in;
 
 // ------------------------------------------------------------
-// Data structures — must match C++ MSParticle / MSSpring
+// Data structures
 // ------------------------------------------------------------
 
 struct Particle {
@@ -34,6 +34,15 @@ struct Triangle {
     uint a, b, c;
 };
 
+struct Collider {
+    int   type;       // 0 = sphere, 1 = plane
+    vec3  position;
+    vec3  normal;
+    float radius;
+    float stiffness;  // penalty spring stiffness
+    float friction;   // Coulomb friction coefficient
+};
+
 // ------------------------------------------------------------
 // Bindings
 // ------------------------------------------------------------
@@ -45,7 +54,7 @@ layout(scalar, set = 0, binding = 0) uniform SimParamsUBO {
     vec3  windDir;                                         // Wind
     float windEnabled, windTurbulence, windStrength, windDragCoeff;
     int   gravityEnabled;                                  // Gravity
-    float _pad;
+    int   numColliders;                                    // Collision
 } params;
 
 layout(scalar, set = 0, binding = 1) readonly buffer ParticleBufferIn {
@@ -68,7 +77,11 @@ layout(scalar, set = 0, binding = 5) readonly buffer TriangleBuffer {
     Triangle triangles[];
 };
 
-layout(scalar, set = 0, binding = 6) writeonly buffer ParticleBufferOut {
+layout(scalar, set = 0, binding = 6) readonly buffer ColliderBuffer {
+    Collider colliders[];
+};
+
+layout(scalar, set = 0, binding = 7) writeonly buffer ParticleBufferOut {
     Particle particlesOut[];
 };
 
@@ -156,11 +169,48 @@ void main() {
         acc += params.windDragCoeff * dot(vRel, faceNorm) * faceNorm * p.invMass;
     }
 
-    // --- Verlet integration ---
+    // Collision penalty forces + Coulomb friction
+    vec3 pVel = (p.position - p.prevPosition) / params.dt;
+    for (int ci = 0; ci < params.numColliders; ++ci) {
+        Collider col = colliders[ci];
+
+        vec3  n   = vec3(0.0);
+        float pen = 0.0;
+
+        if (col.type == 0) {
+            vec3  d    = p.position - col.position;
+            float dist = length(d);
+            pen = col.radius - dist;
+            if (pen > 0.0 && dist > 1e-6) n = d / dist;
+            else pen = 0.0;
+        } else {
+            pen = col.radius - dot(p.position - col.position, col.normal);
+            if (pen > 0.0) n = col.normal;
+            else pen = 0.0;
+        }
+
+        if (pen > 0.0) {
+            // Normal penalty + damping
+            float vn   = dot(pVel, n);
+            float damp = col.stiffness * 0.05;
+            float fNorm = col.stiffness * pen - damp * vn;
+            acc += fNorm * n * p.invMass;
+
+            // Coulomb friction opposing tangential velocity
+            vec3  vTan    = pVel - vn * n;
+            float vTanLen = length(vTan);
+            if (vTanLen > 1e-6) {
+                float fFric = min(col.friction * abs(fNorm), vTanLen / params.dt);
+                acc -= fFric * (vTan / vTanLen) * p.invMass;
+            }
+        }
+    }
+
+    // Verlet integration
     vec3 vel    = (p.position - p.prevPosition) * params.velocityDamping;
     vec3 newPos = p.position + vel + acc * (params.dt * params.dt);
 
-    // --- Recompute normal from triangle adjacency list (topology-agnostic) ---
+    // Recompute normal from triangle adjacency list (topology-agnostic)
     vec3 vNormal = vec3(0.0);
     VertexTriMetadata triMeta = vertexTriMeta[id];
     for (uint j = 0; j < triMeta.triCount; ++j) {
@@ -173,7 +223,7 @@ void main() {
     float nLen = length(vNormal);
     if (nLen > 1e-6) vNormal /= nLen;
 
-    // --- Write output particle ---
+    // Write output particle
     particlesOut[id].position     = newPos;
     particlesOut[id].prevPosition = p.position;
     particlesOut[id].normal       = vNormal;

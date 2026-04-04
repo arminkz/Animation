@@ -1,10 +1,11 @@
 #include "ClothModel.h"
 #include "core/SinglePassRenderer.h"
 
-ClothModel::ClothModel(std::shared_ptr<VulkanContext> ctx, int rows, int cols, float spacing)
+ClothModel::ClothModel(std::shared_ptr<VulkanContext> ctx, int rows, int cols, float spacing,
+                       ClothPinMode pinMode, glm::mat4 initialTransform)
     : Model(ctx, "Cloth", nullptr)
 {
-    _sim = std::make_unique<ClothSimulation>(_ctx, rows, cols, spacing);
+    _sim = std::make_unique<ClothSimulation>(_ctx, rows, cols, spacing, pinMode, initialTransform);
 }
 
 void ClothModel::setTexture(const std::string& path)

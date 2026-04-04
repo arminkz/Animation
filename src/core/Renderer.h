@@ -12,7 +12,7 @@ public:
     virtual ~Renderer() = default;
     
     // Update Logic
-    virtual void update() = 0; 
+    virtual void update() {}; 
 
     // Compute Operations (Optional)
     virtual void dispatchCompute(VkCommandBuffer commandBuffer) {}
@@ -29,7 +29,7 @@ public:
     virtual void handleKeyDown(int key, int scancode, int modifiers) = 0;
 
     // Called each frame to build scene-specific ImGui controls
-    virtual void buildUI() = 0;
+    virtual void buildUI() {};
 
 protected:
     std::shared_ptr<VulkanContext> _ctx;

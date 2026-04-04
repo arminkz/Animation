@@ -53,8 +53,12 @@ file(GLOB SOURCES
     src/geometry/*.cpp
     src/gui/*.cpp
     src/scene/*.cpp
+    src/scene/camera/*.cpp
     src/scene/content/*.cpp
     src/scene/content/flag/*.cpp
+    src/scene/content/table/*.cpp
+    src/scene/content/jelly/*.cpp
+    src/scene/content/boid/*.cpp
     src/scene/physics/*.cpp
     src/vulkan/*.cpp
     src/vulkan/resources/*.cpp

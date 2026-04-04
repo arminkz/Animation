@@ -1,6 +1,8 @@
 #include "core/FramePresenter.h"
 #include "scene/content/flag/FlagScene.h"
 #include "scene/content/table/TableScene.h"
+#include "scene/content/jelly/JellyScene.h"
+#include "scene/content/boid/BoidScene.h"
 
 FramePresenter::FramePresenter(std::shared_ptr<VulkanContext> ctx)
     : _ctx(std::move(ctx))
@@ -8,7 +10,7 @@ FramePresenter::FramePresenter(std::shared_ptr<VulkanContext> ctx)
     spdlog::info("Max Frames in flight: {}", MAX_FRAMES_IN_FLIGHT);
 
     _swapChain = std::make_shared<SwapChain>(_ctx);
-    _renderer = std::make_unique<FlagScene>(_ctx, _swapChain);
+    switchScene(_selectedScene);
     _gui = std::make_unique<GUI>(_ctx, _ctx->window, _swapChain->getSwapChainImageFormat());
 
     createCommandBuffers();
@@ -164,7 +166,6 @@ void FramePresenter::present() {
 
     // Build ImGui frame
     _gui->beginFrame();
-    _gui->buildUI();
     buildSceneSelector();
     _renderer->buildUI();
 
@@ -240,9 +241,11 @@ void FramePresenter::present() {
 
 void FramePresenter::buildSceneSelector()
 {
-    static const char* sceneNames[] = { "Flag" };
+    static const char* sceneNames[] = { "Flag", "Table", "Jelly", "Boid" };
 
-    ImGui::Begin("Scene");
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(300, 60), ImGuiCond_Always);
+    ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove);
     int prev = _selectedScene;
     if (ImGui::Combo("Scene", &_selectedScene, sceneNames, IM_ARRAYSIZE(sceneNames)))
         if (_selectedScene != prev)
@@ -257,6 +260,9 @@ void FramePresenter::switchScene(int index)
     spdlog::info("Switching scene...");
     switch (index) {
         case 0: _renderer = std::make_unique<FlagScene>(_ctx, _swapChain);  break;
+        case 1: _renderer = std::make_unique<TableScene>(_ctx, _swapChain); break;
+        case 2: _renderer = std::make_unique<JellyScene>(_ctx, _swapChain); break;
+        case 3: _renderer = std::make_unique<BoidScene>(_ctx, _swapChain); break;
     }
 }
 

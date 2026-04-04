@@ -13,7 +13,6 @@ public:
 
     // Called once per frame before recordCommandBuffer — builds CPU-side draw data
     void beginFrame();
-    void buildUI();
 
     // Called inside recordCommandBuffer — records ImGui draw commands into the command buffer
     void recordToCommandBuffer(VkCommandBuffer commandBuffer, VkFramebuffer framebuffer, VkExtent2D extent);

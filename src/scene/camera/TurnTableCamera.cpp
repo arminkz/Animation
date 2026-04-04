@@ -1,4 +1,4 @@
-#include "scene/TurnTableCamera.h"
+#include "scene/camera/TurnTableCamera.h"
 
 TurnTableCamera::TurnTableCamera(const TurnTableCameraParams& params) {
     _target = params.target;

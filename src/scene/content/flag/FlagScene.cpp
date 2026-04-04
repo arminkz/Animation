@@ -1,5 +1,5 @@
 #include "FlagScene.h"
-#include "scene/TurnTableCamera.h"
+#include "scene/camera/TurnTableCamera.h"
 
 #include "gui/FontAwesome.h"
 #include "core/AssetPath.h"
@@ -71,9 +71,9 @@ void FlagScene::connectPipelines()
 void FlagScene::createCamera() {
     TurnTableCameraParams cameraParams{};
     cameraParams.target          = glm::vec3(0.f);
-    cameraParams.initialRadius   = glm::length(glm::vec3(0.f, 20.f, 20.f));
-    cameraParams.initialAzimuth  = 0.f;
-    cameraParams.initialElevation = -glm::quarter_pi<float>(); // 45° below horizon
+    cameraParams.initialRadius   = glm::length(glm::vec3(0.f, 30.f, 30.f));
+    cameraParams.initialAzimuth  = glm::half_pi<float>();
+    cameraParams.initialElevation = 0.f; // -glm::quarter_pi<float>(); // 45° below horizon
     _camera = std::make_unique<TurnTableCamera>(cameraParams);
 }
 
@@ -113,12 +113,12 @@ void FlagScene::dispatchCompute(VkCommandBuffer cmd)
 
 void FlagScene::buildUI()
 {
-    ImGui::Begin("Cloth");
-    ImGui::Text(ICON_FA_TACHOMETER_ALT " %.1f FPS  (%.2f ms)",
+    ImGui::Begin("Flag");
+    ImGui::Text(ICON_FA_GAUGE " %.1f FPS  (%.2f ms)",
         ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 
     ImGui::Separator();
-    ImGui::Text(ICON_FA_FILM  " Scene");
+    ImGui::Text(ICON_FA_FLAG  " Flag");
     ImGui::Indent(16.0f);
     static const char* textureNames[] = { "Iranian Flag", "US Flag", "Israeli Flag"};
     static const char* texturePaths[] = {
@@ -134,7 +134,7 @@ void FlagScene::buildUI()
     ImGui::Unindent(16.0f);
 
     ImGui::Separator();
-    ImGui::Text(ICON_FA_ATOM " Mass Spring");
+    ImGui::Text(ICON_FA_WEIGHT_HANGING " Mass Spring");
     ImGui::Indent(16.0f);
     auto& sim = *_clothModel->getSimulation();
     ImGui::SliderFloat("Stiffness",       &sim.stiffness,     0.f, 2000.f);

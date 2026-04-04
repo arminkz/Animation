@@ -60,11 +60,19 @@ void MassSpringSimulation::init(const std::vector<MSParticle>&        particles,
         VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
         VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
+    // Collider buffer — host-visible, fixed capacity, zeroed initially
+    _colliderBuffer = std::make_unique<Buffer>(_ctx, sizeof(MSCollider) * MAX_COLLIDERS,
+        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    std::vector<MSCollider> empty(MAX_COLLIDERS);
+    _colliderBuffer->copyData(empty.data(), sizeof(MSCollider) * MAX_COLLIDERS);
+
     VkDescriptorBufferInfo paramsInfo      = _paramsBuffer->getDescriptorInfo();
     VkDescriptorBufferInfo metadataInfo    = _particleMetadataBuffer->getDescriptorInfo();
     VkDescriptorBufferInfo springsInfo     = _springsBuffer->getDescriptorInfo();
     VkDescriptorBufferInfo vtMetaInfo      = _vertexTriMetaBuffer->getDescriptorInfo();
     VkDescriptorBufferInfo trianglesInfo   = _trianglesBuffer->getDescriptorInfo();
+    VkDescriptorBufferInfo collidersInfo   = _colliderBuffer->getDescriptorInfo();
 
     for (int i = 0; i < 2; ++i)
     {
@@ -78,7 +86,8 @@ void MassSpringSimulation::init(const std::vector<MSParticle>&        particles,
             Descriptor(3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1, springsInfo),
             Descriptor(4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1, vtMetaInfo),
             Descriptor(5, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1, trianglesInfo),
-            Descriptor(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1, outInfo),
+            Descriptor(6, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1, collidersInfo),
+            Descriptor(7, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, VK_SHADER_STAGE_COMPUTE_BIT, 1, outInfo),
         });
     }
 
@@ -108,7 +117,7 @@ void MassSpringSimulation::dispatch(VkCommandBuffer cmd, float dt, float time)
     params.windStrength    = windStrength;
     params.windDragCoeff   = windDragCoeff;
     params.gravityEnabled  = gravityEnabled ? 1 : 0;
-    params._pad            = 0.f;
+    params.numColliders    = _numColliders;
 
     _paramsBuffer->copyData(&params, sizeof(MSSimParams));
 
@@ -122,4 +131,12 @@ void MassSpringSimulation::dispatch(VkCommandBuffer cmd, float dt, float time)
     vkCmdDispatch(cmd, groups, 1, 1);
 
     _currentIn ^= 1;
+}
+
+
+void MassSpringSimulation::setColliders(const std::vector<MSCollider>& colliders)
+{
+    _numColliders = static_cast<int32_t>(std::min((int)colliders.size(), MAX_COLLIDERS));
+    if (_numColliders > 0)
+        _colliderBuffer->copyData(colliders.data(), sizeof(MSCollider) * _numColliders);
 }

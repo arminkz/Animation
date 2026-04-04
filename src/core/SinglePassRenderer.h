@@ -8,7 +8,7 @@
 #include "vulkan/resources/Buffer.h"
 #include "vulkan/DescriptorSet.h"
 #include "core/Renderer.h"
-#include "scene/Camera.h"
+#include "scene/camera/Camera.h"
 #include "scene/SelectableModel.h"
 #include "scene/Model.h"
 
@@ -20,7 +20,7 @@ public:
     ~SinglePassRenderer();
 
     void update() override final;
-    virtual void advance() = 0;
+    virtual void advance() {};
     void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t targetSwapImageIndex) override;
     void onSwapChainRecreated() override;
 

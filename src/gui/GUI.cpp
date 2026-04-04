@@ -139,12 +139,6 @@ void GUI::beginFrame()
     ImGui::NewFrame();
 }
 
-void GUI::buildUI()
-{
-    // Renderer-level controls (scene-independent)
-    // e.g. scene selector, global settings
-}
-
 void GUI::recordToCommandBuffer(VkCommandBuffer commandBuffer, VkFramebuffer framebuffer, VkExtent2D extent)
 {
     ImGui::Render();
@@ -184,6 +178,7 @@ void GUI::loadFonts()
 	cfg.GlyphMaxAdvanceX = 20.0f;
 	std::copy_n("FontAwesome", 12, cfg.Name);
 
-	io.Fonts->AddFontFromFileTTF(AssetPath::getInstance()->get("fonts/fa-regular-400.ttf").c_str(), 13.0f, &cfg, icons_ranges);
-	io.Fonts->AddFontFromFileTTF(AssetPath::getInstance()->get("fonts/fa-solid-900.ttf").c_str(), 13.0f, &cfg, icons_ranges);
+	io.Fonts->AddFontFromFileTTF(AssetPath::getInstance()->get("fonts/fa7-free-regular-400.otf").c_str(), 13.0f, &cfg, icons_ranges);
+	io.Fonts->AddFontFromFileTTF(AssetPath::getInstance()->get("fonts/fa7-free-solid-900.otf").c_str(), 13.0f, &cfg, icons_ranges);
+	io.Fonts->AddFontFromFileTTF(AssetPath::getInstance()->get("fonts/fa7-brands-regular-400.otf").c_str(), 13.0f, &cfg, icons_ranges);
 }

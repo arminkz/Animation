@@ -1,0 +1,28 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 64) in;
+
+layout(scalar, set = 0, binding = 0) uniform Params {
+    uint  nBoids;
+    float dt;
+    float rs;
+    float ra;
+    float rc;
+    float ws, wa, wc;
+    float minSpeed, maxSpeed;
+    float wrapRange;
+    float cellSize;
+    uint  gridDim;
+    uint  totalCells;
+} params;
+
+layout(set = 0, binding = 1) buffer GridCounts {
+    uint gridCounts[];
+};
+
+void main() {
+    uint idx = gl_GlobalInvocationID.x;
+    if (idx < params.totalCells)
+        gridCounts[idx] = 0;
+}

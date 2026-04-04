@@ -1,23 +1,16 @@
 #version 450
 
-// Per-frame variables (set 0 is per-frame descriptor set)
 layout(set = 0, binding = 0) uniform SceneInfo {
     mat4 view;
     mat4 proj;
-
     float time;
     vec3 cameraPosition;
     vec3 lightColor;
 } si;
 
-layout(location = 0) in vec4 fragColor;
-layout(location = 1) in vec2 fragTexCoord;
-layout(location = 2) in vec4 worldPosition;
-layout(location = 3) in vec3 worldNormal;
-layout(location = 4) in vec3 worldTangent;
-
+layout(location = 0) in  vec3 worldNormal;
+layout(location = 1) in  vec3 worldPosition;
 layout(location = 0) out vec4 outColor;
-
 
 void main() {
     vec3 N = normalize(worldNormal);
@@ -33,6 +26,6 @@ void main() {
     float ambient = 0.15;
     float light   = ambient + diffuse * 0.75 + rim;
 
-    outColor = fragColor * light;
+    vec3 baseColor = vec3(0.72, 0.72, 0.72); // neutral grey
+    outColor = vec4(baseColor * light, 1.0);
 }
-
