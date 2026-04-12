@@ -18,7 +18,7 @@ public:
     virtual void dispatchCompute(VkCommandBuffer commandBuffer) {}
 
     // Graphics Operations
-    virtual void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex) = 0;
+    virtual void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex) = 0;
     virtual void onSwapChainRecreated() { }
     void setCurrentFrame(uint32_t frameIndex) { _currentFrame = frameIndex; } // (0 < currentFrame < MAX_FRAMES_IN_FLIGHT)
 

@@ -149,12 +149,16 @@ void TableScene::advance()
     _dt = std::min(std::chrono::duration<float>(now - _lastFrameTime).count(), 1.f / 30.f);
     _lastFrameTime = now;
 
+    if (_paused) _dt = 0.f;
+
     _sceneInfo.time += _dt;
     _camera->advanceAnimation(_dt);
 }
 
 void TableScene::dispatchCompute(VkCommandBuffer cmd)
 {
+    if (_paused) return;
+
     ClothSimulation* sim = _clothModel->getSimulation();
 
     MSCollider sphere{};
@@ -185,29 +189,40 @@ void TableScene::buildUI()
 
     ImGui::Separator();
     ImGui::Text(ICON_FA_FLASK " Simulation");
+    ImGui::Indent(16.0f);
+    if (ImGui::Button(_paused ? ICON_FA_PLAY " Resume" : ICON_FA_PAUSE " Pause"))
+        _paused = !_paused;
+    ImGui::SameLine();
+    if (ImGui::Button("Restart")) restartCloth();
     ImGui::SliderFloat("Time Scale", &_timeScale, 0.1f, 5.f);
+    ImGui::Unindent(16.0f);
 
     ImGui::Separator();
     ImGui::Text(ICON_FA_SHIRT " Cloth");
-    if (ImGui::Button("Drop")) restartCloth();
-    ImGui::SliderFloat("Drop X Offset", &_dropOffsetX, -5.f, 5.f);
+    ImGui::Indent(16.0f);
+    ImGui::SliderFloat("Initial X Offset", &_dropOffsetX, -5.f, 5.f);
     if (ImGui::Checkbox("Wireframe", &_wireframe))
         _clothModel->setPipeline(_wireframe ? _clothWireframePipeline : _clothRenderPipeline);
+    ImGui::Unindent(16.0f);
     
     ImGui::Separator();
     ImGui::Text(ICON_FA_WEIGHT_HANGING " Mass Spring");
+    ImGui::Indent(16.0f);
     ImGui::SliderFloat("Stiffness",        &sim.stiffness,      0.f, 3000.f);
     ImGui::SliderFloat("Spring Damping",   &sim.springDamping,  0.f, 20.f);
     ImGui::SliderFloat("Velocity Damping", &sim.damping,        0.f, 1.f);
     ImGui::SliderInt  ("Substeps",         &sim.substeps,       1,   20);
+    ImGui::Unindent(16.0f);
 
     ImGui::Separator();
     ImGui::Text(ICON_FA_CIRCLE "Sphere Collider");
+    ImGui::Indent(16.0f);
     ImGui::DragFloat3("Center",     &_sphereCenter.x,    0.1f);
     ImGui::SliderFloat("Radius",         &_sphereRadius,       0.5f,  15.f);
     ImGui::SliderFloat("Collider Offset",&_colliderOffset,     0.0f,  1.f);
     ImGui::SliderFloat("Col. Stiffness", &_colliderStiffness,  100.f, 20000.f);
     ImGui::SliderFloat("Friction",       &_colliderFriction,   0.f,   2.f);
+    ImGui::Unindent(16.0f);
 
     ImGui::End();
 }

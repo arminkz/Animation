@@ -27,7 +27,8 @@ FlagScene::~FlagScene()
 
 void FlagScene::createModels()
 {
-    _clothModel = std::make_shared<ClothModel>(_ctx, 21, 33, 0.5f); // 32/20 = 1.6 aspect ratio
+    glm::mat4 flagTransform = glm::translate(glm::mat4(1.f), glm::vec3(8.f, 0.f, 0.f));
+    _clothModel = std::make_shared<ClothModel>(_ctx, 21, 33, 0.5f, ClothPinMode::LeftColumn, flagTransform); // 32/20 = 1.6 aspect ratio
     _clothModel->setTexture(AssetPath::getInstance()->get("textures/flag_iran.png"));
     _sceneModels.push_back(_clothModel);
 }
@@ -85,6 +86,8 @@ void FlagScene::advance()
     _dt = std::chrono::duration<float>(now - _lastFrameTime).count();
     _lastFrameTime = now;
 
+    if (_paused) _dt = 0.f;
+
     // advance time in UBO
     _sceneInfo.time += _dt;
 
@@ -95,6 +98,8 @@ void FlagScene::advance()
 
 void FlagScene::dispatchCompute(VkCommandBuffer cmd)
 {
+    if (_paused) return;
+
     ClothSimulation* sim = _clothModel->getSimulation();
 
     float subDt = _dt / static_cast<float>(sim->substeps);
@@ -116,6 +121,13 @@ void FlagScene::buildUI()
     ImGui::Begin("Flag");
     ImGui::Text(ICON_FA_GAUGE " %.1f FPS  (%.2f ms)",
         ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
+
+    ImGui::Separator();
+    ImGui::Text(ICON_FA_FLASK " Simulation");
+    ImGui::Indent(16.0f);
+    if (ImGui::Button(_paused ? ICON_FA_PLAY " Resume" : ICON_FA_PAUSE " Pause"))
+        _paused = !_paused;
+    ImGui::Unindent(16.0f);
 
     ImGui::Separator();
     ImGui::Text(ICON_FA_FLAG  " Flag");

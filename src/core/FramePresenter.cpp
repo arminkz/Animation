@@ -149,8 +149,8 @@ void FramePresenter::present() {
     vkWaitForFences(_ctx->device, 1, &_inFlightFences[_frameCounter], VK_TRUE, UINT64_MAX);
 
     // Wait for a swap chain image to be available
-    uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(_ctx->device, _swapChain->getSwapChain(), UINT64_MAX, _imageAvailableSemaphores[_imageCounter], VK_NULL_HANDLE, &imageIndex);
+    uint32_t swapChainImageIndex;
+    VkResult result = vkAcquireNextImageKHR(_ctx->device, _swapChain->getSwapChain(), UINT64_MAX, _imageAvailableSemaphores[_imageCounter], VK_NULL_HANDLE, &swapChainImageIndex);
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
         invalidate();
@@ -185,8 +185,8 @@ void FramePresenter::present() {
     _renderer->dispatchCompute(_commandBuffers[_frameCounter]);
 
     // Record scene and GUI into the same command buffer, then end it
-    _renderer->recordToCommandBuffer(_commandBuffers[_frameCounter], imageIndex);
-    _gui->recordToCommandBuffer(_commandBuffers[_frameCounter], _guiFramebuffers[imageIndex], _swapChain->getSwapChainExtent());
+    _renderer->recordToCommandBuffer(_commandBuffers[_frameCounter], swapChainImageIndex);
+    _gui->recordToCommandBuffer(_commandBuffers[_frameCounter], _guiFramebuffers[swapChainImageIndex], _swapChain->getSwapChainExtent());
 
     if (vkEndCommandBuffer(_commandBuffers[_frameCounter]) != VK_SUCCESS) {
         spdlog::error("Failed to end command buffer!");
@@ -223,7 +223,7 @@ void FramePresenter::present() {
     VkSwapchainKHR swapChains[] = {_swapChain->getSwapChain()};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
+    presentInfo.pImageIndices = &swapChainImageIndex;
     presentInfo.pResults = nullptr; // Optional
 
     result = vkQueuePresentKHR(_ctx->presentQueue, &presentInfo);

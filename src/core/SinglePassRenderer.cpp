@@ -143,7 +143,7 @@ void SinglePassRenderer::update()
 }
 
 
-void SinglePassRenderer::recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t targetSwapImageIndex)
+void SinglePassRenderer::recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex)
 {
     //when we reach here command buffer is already began. just record draw commands
     std::array<VkClearValue, 2> clearValues{};
@@ -153,7 +153,7 @@ void SinglePassRenderer::recordToCommandBuffer(VkCommandBuffer commandBuffer, ui
     VkRenderPassBeginInfo sceneInfo{};
     sceneInfo.sType             = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
     sceneInfo.renderPass        = _mainRenderPass->getRenderPass();
-    sceneInfo.framebuffer       = _mainFrameBuffers[targetSwapImageIndex]->getFrameBuffer();
+    sceneInfo.framebuffer       = _mainFrameBuffers[swapChainImageIndex]->getFrameBuffer();
     sceneInfo.renderArea.offset = {0, 0};
     sceneInfo.renderArea.extent = _swapChain->getSwapChainExtent();
     sceneInfo.clearValueCount   = static_cast<uint32_t>(clearValues.size());

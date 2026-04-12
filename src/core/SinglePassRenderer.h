@@ -21,7 +21,7 @@ public:
 
     void update() override final;
     virtual void advance() {};
-    void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t targetSwapImageIndex) override;
+    void recordToCommandBuffer(VkCommandBuffer commandBuffer, uint32_t swapChainImageIndex) override;
     void onSwapChainRecreated() override;
 
     void handleMouseClick(float mouseX, float mouseY) override;

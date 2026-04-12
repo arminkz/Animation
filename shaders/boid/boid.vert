@@ -28,9 +28,10 @@ layout(location = 3) out vec3 worldNormal;
 layout(location = 4) out vec3 worldTangent;
 
 void main() {
-    mat4 model = transforms[gl_InstanceIndex];
+    // Instance rendering: one draw call for all boids, with per-boid transforms from the compute shader
+    mat4 model = transforms[gl_InstanceIndex]; 
 
-    worldPosition = model * vec4(inPosition, 1.0);
+    worldPosition =  model * vec4(inPosition, 1.0);
     worldNormal   = (model * vec4(inNormal,  0.0)).xyz;
     worldTangent  = (model * vec4(inTangent, 0.0)).xyz;
 

@@ -18,8 +18,8 @@ public:
     const DescriptorSet* getTransformDescriptorSet() const { return _transformDS.get(); }
 
 private:
-    VkBuffer  _transformBuffer  = VK_NULL_HANDLE;
-    uint32_t  _instanceCount    = 0;
+    VkBuffer _transformBuffer  = VK_NULL_HANDLE;
+    uint32_t _instanceCount    = 0;
 
     // Descriptor set wrapping _transformBuffer as an SSBO for the vertex shader
     std::unique_ptr<DescriptorSet> _transformDS;

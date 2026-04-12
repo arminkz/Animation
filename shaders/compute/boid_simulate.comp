@@ -4,62 +4,48 @@
 layout(local_size_x = 64) in;
 
 struct BoidState {
-    vec3  position;
-    float _p0;
-    vec3  velocity;
-    float _p1;
+    vec4 position;  // .w unused
+    vec4 velocity;  // .w unused
 };
 
 layout(scalar, set = 0, binding = 0) uniform Params {
-    uint  nBoids;
-    float dt;
-    float rs;
-    float ra;
-    float rc;
-    float ws, wa, wc;
-    float minSpeed, maxSpeed;
-    float wrapRange;
-    float cellSize;
-    uint  gridDim;
-    uint  totalCells;
+    uint  nBoids;                // total number of boids in the simulation
+    float dt;                    // time step for the simulation update
+    float precptionAngle;        // angle of the boid's perception cone
+    float rs, ra, rc;            // radii for separation, alignment, cohesion
+    float ws, wa, wc;            // weights for separation, alignment, cohesion
+    float minSpeed, maxSpeed;    // clamping speeds for boids
+    float wrapRange;             // world is a cube from [-wrapRange, +wrapRange] in all dimensions
+    float cellSize;              // size of each grid cell; should be >= max(rs, ra, rc)
+    uint  gridDim;               // number of cells along each dimension; totalCells = gridDim^3
+    uint  totalCells;            // precomputed gridDim^3, for convenience
 } params;
 
-layout(scalar, set = 0, binding = 1) readonly buffer InBoids {
-    BoidState inBoids[];
-};
-
-layout(scalar, set = 0, binding = 2) writeonly buffer OutBoids {
-    BoidState outBoids[];
-};
-
-layout(set = 0, binding = 3) readonly buffer GridCounts {
-    uint gridCounts[];
-};
-
-layout(set = 0, binding = 4) readonly buffer GridBoids {
-    uint gridBoids[];
-};
-
-layout(scalar, set = 0, binding = 5) writeonly buffer Transforms {
-    mat4 transforms[];
-};
+layout(scalar, set = 0, binding = 1) readonly  buffer InBoids     { BoidState inBoids[]; };
+layout(        set = 0, binding = 2) readonly  buffer GridCounts  { uint gridCounts[];   };
+layout(        set = 0, binding = 3) readonly  buffer GridBoids   { uint gridBoids[];    };
+layout(scalar, set = 0, binding = 4) writeonly buffer OutBoids    { BoidState outBoids[];};
+layout(scalar, set = 0, binding = 5) writeonly buffer Transforms  { mat4 transforms[];   };
 
 #define MAX_PER_CELL 64
 
+// Called once per boid, to compute the new boid state and transform.
 void main() {
     uint i = gl_GlobalInvocationID.x;
     if (i >= params.nBoids) return;
 
-    vec3 pos     = inBoids[i].position;
-    vec3 vel     = inBoids[i].velocity;
+    vec3 pos = inBoids[i].position.xyz;
+    vec3 vel = inBoids[i].velocity.xyz;
     vec3 heading = normalize(vel);
 
-    vec3  sepForce  = vec3(0.0);
-    int   sepCount  = 0;
-    vec3  aliVel    = vec3(0.0);
-    int   aliCount  = 0;
-    vec3  cohCenter = vec3(0.0);
-    int   cohCount  = 0;
+    vec3 sepForce = vec3(0.0);
+    int  sepCount = 0;
+
+    vec3 aliForce = vec3(0.0);
+    int  aliCount = 0;
+
+    vec3 cohForce = vec3(0.0);
+    int  cohCount = 0;
 
     // Determine which cell this boid is in
     ivec3 myCell = ivec3(floor((pos + params.wrapRange) / params.cellSize));
@@ -89,20 +75,32 @@ void main() {
                     uint j = gridBoids[cellIdx * MAX_PER_CELL + s];
                     if (j == i) continue;
 
-                    vec3  diff = pos - inBoids[j].position;
-                    float dist = length(diff);
-                    if (dist < 1e-4) continue;
+                    vec3 pDiff = pos - inBoids[j].position.xyz;
+                    float pDist = length(pDiff);
+                    if (pDist < 1e-4) continue;
+                    vec3 npDiff = pDiff / pDist;  // normalized direction from j to i
 
-                    if (dist < params.rs) {
-                        sepForce += diff / (dist * dist);
+                    vec3 vDiff = vel - inBoids[j].velocity.xyz;
+
+                    // Skip boids outside the perception cone
+                    vec3 toNeighbour = -npDiff;  // direction from i to j
+                    if (dot(heading, toNeighbour) < cos(params.precptionAngle)) continue;
+
+                    // Separation: steer away from nearby boids
+                    if (pDist < params.rs) {
+                        sepForce += npDiff / pDist;
                         ++sepCount;
                     }
-                    if (dist < params.ra) {
-                        aliVel += inBoids[j].velocity;
+
+                    // Alignment: steer towards average heading of boids within alignment radius
+                    if (pDist < params.ra) {
+                        aliForce += vDiff;
                         ++aliCount;
                     }
-                    if (dist < params.rc) {
-                        cohCenter += inBoids[j].position;
+
+                    // Cohesion: steer towards center of boids within cohesion radius
+                    if (pDist < params.rc) {
+                        cohForce += -pDiff;
                         ++cohCount;
                     }
                 }
@@ -110,22 +108,20 @@ void main() {
         }
     }
 
-    // --- Steering ---
+    // Net acceleration is weighted sum of the three behaviours
     vec3 steer = vec3(0.0);
 
     if (sepCount > 0)
-        steer += params.ws * normalize(sepForce);
+        steer += params.ws * normalize(sepForce / float(sepCount));
 
     if (aliCount > 0)
-        steer += params.wa * normalize(aliVel / float(aliCount));
+        steer += params.wa * normalize(aliForce / float(aliCount));
 
-    if (cohCount > 0) {
-        vec3 toCenter = cohCenter / float(cohCount) - pos;
-        if (length(toCenter) > 1e-4)
-            steer += params.wc * normalize(toCenter);
-    }
+    if (cohCount > 0)
+        steer += params.wc * normalize(cohForce / float(cohCount));
+    
 
-    // Integrate
+    // Integrate (Semi-Implicit Euler)
     vec3 newVel = vel + steer * params.dt;
     float speed = length(newVel);
     if (speed > 1e-4)
@@ -141,23 +137,22 @@ void main() {
         if (newPos[k] < -params.wrapRange) newPos[k] += 2.0 * params.wrapRange;
     }
 
-    outBoids[i].position = newPos;
-    outBoids[i]._p0      = 0.0;
-    outBoids[i].velocity = newVel;
-    outBoids[i]._p1      = 0.0;
+    outBoids[i].position = vec4(newPos, 0.0);
+    outBoids[i].velocity = vec4(newVel, 0.0);
 
-    // --- Build boidMatrix (heading = +Z, up = +Y, right = +X) ---
-    vec3 h = normalize(newVel);
-    vec3 worldUp = (abs(dot(h, vec3(0.0, 1.0, 0.0))) > 0.99)
+    // Build local coordinate frame (TBN where T = heading)
+    vec3 T = normalize(newVel);
+    vec3 worldUp = (abs(dot(T, vec3(0.0, 1.0, 0.0))) > 0.99)
                    ? vec3(0.0, 0.0, 1.0)
                    : vec3(0.0, 1.0, 0.0);
-    vec3 right = normalize(cross(worldUp, h));
-    vec3 up    = cross(h, right);
+    vec3 B = normalize(cross(worldUp, T));  // bitangent
+    vec3 N = cross(T, B);                   // normal
 
+    // Pyramid apex is along +Z in local space, so map: local+Z → T (heading)
     transforms[i] = mat4(
-        vec4(right,  0.0),
-        vec4(up,     0.0),
-        vec4(h,      0.0),
+        vec4(B,      0.0),  // local +X → bitangent (right)
+        vec4(N,      0.0),  // local +Y → normal    (up)
+        vec4(T,      0.0),  // local +Z → tangent   (heading/forward)
         vec4(newPos, 1.0)
     );
 }

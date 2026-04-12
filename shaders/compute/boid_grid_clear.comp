@@ -4,23 +4,24 @@
 layout(local_size_x = 64) in;
 
 layout(scalar, set = 0, binding = 0) uniform Params {
-    uint  nBoids;
-    float dt;
-    float rs;
-    float ra;
-    float rc;
-    float ws, wa, wc;
-    float minSpeed, maxSpeed;
-    float wrapRange;
-    float cellSize;
-    uint  gridDim;
-    uint  totalCells;
+    uint  nBoids;                // total number of boids in the simulation
+    float dt;                    // time step for the simulation update
+    float precptionAngle;        // half-angle of the boid's perception cone
+    float rs, ra, rc;            // radii for separation, alignment, cohesion
+    float ws, wa, wc;            // weights for separation, alignment, cohesion
+    float minSpeed, maxSpeed;    // clamping speeds for boids
+    float wrapRange;             // world is a cube from [-wrapRange, +wrapRange] in all dimensions
+    float cellSize;              // size of each grid cell; should be >= max(rs, ra, rc)
+    uint  gridDim;               // number of cells along each dimension; totalCells = gridDim^3
+    uint  totalCells;            // precomputed gridDim^3, for convenience
 } params;
 
 layout(set = 0, binding = 1) buffer GridCounts {
     uint gridCounts[];
 };
 
+// called once per cell, to clear the grid counts to 0 before building the grid
+// gridDim^3 threads
 void main() {
     uint idx = gl_GlobalInvocationID.x;
     if (idx < params.totalCells)

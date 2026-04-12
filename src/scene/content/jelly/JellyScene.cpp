@@ -1,6 +1,7 @@
 #include "JellyScene.h"
 #include "scene/camera/TurnTableCamera.h"
 #include "core/AssetPath.h"
+#include "gui/FontAwesome.h"
 #include "vulkan/VulkanHelper.h"
 #include "scene/physics/MassSpringSimulation.h"
 
@@ -94,12 +95,16 @@ void JellyScene::advance()
     _dt = std::min(std::chrono::duration<float>(now - _lastFrameTime).count(), 1.f / 30.f);
     _lastFrameTime = now;
 
+    if (_paused) _dt = 0.f;
+
     _sceneInfo.time += _dt;
     _camera->advanceAnimation(_dt);
 }
 
 void JellyScene::dispatchCompute(VkCommandBuffer cmd)
 {
+    if (_paused) return;
+
     MSCollider plane{};
     plane.type      = static_cast<int32_t>(MSColliderType::Plane);
     plane.position  = glm::vec3(0.f, _planeY, 0.f);
@@ -122,21 +127,35 @@ void JellyScene::dispatchCompute(VkCommandBuffer cmd)
 void JellyScene::buildUI()
 {
     ImGui::Begin("Jelly");
+    ImGui::Text(ICON_FA_GAUGE " %.1f FPS  (%.2f ms)",
+        ImGui::GetIO().Framerate, 1000.0f / ImGui::GetIO().Framerate);
 
-    if (ImGui::Button("Restart")) restart();
-    ImGui::SameLine();
-    ImGui::SliderFloat("Time Scale",   &_timeScale,          0.1f,  5.f);
     ImGui::Separator();
-    ImGui::Text("Mass Spring");
+    ImGui::Text(ICON_FA_FLASK " Simulation");
+    ImGui::Indent(16.0f);
+    if (ImGui::Button(_paused ? ICON_FA_PLAY " Resume" : ICON_FA_PAUSE " Pause"))
+        _paused = !_paused;
+    ImGui::SameLine();
+    if (ImGui::Button("Restart")) restart();
+    ImGui::SliderFloat("Time Scale", &_timeScale, 0.1f, 5.f);
+    ImGui::Unindent(16.0f);
+
+    ImGui::Separator();
+    ImGui::Text(ICON_FA_WEIGHT_HANGING " Mass Spring");
+    ImGui::Indent(16.0f);
     ImGui::SliderFloat("Stiffness",    &_sim->stiffness,     0.f,   3000.f);
     ImGui::SliderFloat("Spr. Damping", &_sim->springDamping, 0.f,   20.f);
     ImGui::SliderFloat("Vel. Damping", &_sim->damping,       0.9f,  1.f);
     ImGui::SliderInt  ("Substeps",     &_sim->substeps,      1,     32);
+    ImGui::Unindent(16.0f);
+
     ImGui::Separator();
-    ImGui::Text("Ground Plane");
+    ImGui::Text(ICON_FA_SQUARE " Ground Plane");
+    ImGui::Indent(16.0f);
     ImGui::SliderFloat("Plane Y",      &_planeY,            -5.f,   5.f);
     ImGui::SliderFloat("Stiffness##p", &_planeStiffness,     100.f, 20000.f);
     ImGui::SliderFloat("Friction##p",  &_planeFriction,      0.f,   2.f);
-
+    ImGui::Unindent(16.0f);
+    
     ImGui::End();
 }

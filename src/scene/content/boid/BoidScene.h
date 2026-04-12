@@ -24,19 +24,21 @@ private:
 
     std::shared_ptr<SkyBox>      _skyboxModel;
     std::shared_ptr<ArrowModel>  _agentModel;
-    std::unique_ptr<BoidSimulation> _boidSim;
-
     void createModels();
+    
     void createCamera();
-    void resetBoids();
 
     // Time
     float _timeScale = 1.f;
     TimePoint _lastFrameTime = std::chrono::high_resolution_clock::now();
     float _dt = 0.f;
-
-    int _nBoids = 500;
+    bool _paused = false;
 
     // Spawn range (must match SPAWN_RANGE constant in .cpp)
     static constexpr float SPAWN_RANGE = 100.f;
+
+    // Boids
+    int _nBoids = 500;
+    std::unique_ptr<BoidSimulation> _boidSim;
+    void resetBoids();
 };

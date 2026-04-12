@@ -4,24 +4,21 @@
 layout(local_size_x = 64) in;
 
 struct BoidState {
-    vec3  position;
-    float _p0;
-    vec3  velocity;
-    float _p1;
+    vec4 position;  // .w unused
+    vec4 velocity;  // .w unused
 };
 
 layout(scalar, set = 0, binding = 0) uniform Params {
-    uint  nBoids;
-    float dt;
-    float rs;
-    float ra;
-    float rc;
-    float ws, wa, wc;
-    float minSpeed, maxSpeed;
-    float wrapRange;
-    float cellSize;
-    uint  gridDim;
-    uint  totalCells;
+    uint  nBoids;                // total number of boids in the simulation
+    float dt;                    // time step for the simulation update
+    float precptionAngle;        // half-angle of the boid's perception cone
+    float rs, ra, rc;            // radii for separation, alignment, cohesion
+    float ws, wa, wc;            // weights for separation, alignment, cohesion
+    float minSpeed, maxSpeed;    // clamping speeds for boids
+    float wrapRange;             // world is a cube from [-wrapRange, +wrapRange] in all dimensions
+    float cellSize;              // size of each grid cell; should be >= max(rs, ra, rc)
+    uint  gridDim;               // number of cells along each dimension; totalCells = gridDim^3
+    uint  totalCells;            // precomputed gridDim^3, for convenience
 } params;
 
 layout(scalar, set = 0, binding = 1) readonly buffer InBoids {
@@ -29,28 +26,35 @@ layout(scalar, set = 0, binding = 1) readonly buffer InBoids {
 };
 
 layout(set = 0, binding = 2) buffer GridCounts {
-    uint gridCounts[];
+    uint gridCounts[]; // [cellIdx] ,  0 < cellIdx < gridDim^3
 };
 
 layout(set = 0, binding = 3) buffer GridBoids {
-    uint gridBoids[];   // [cellIdx * MAX_PER_CELL + slot]
+    uint gridBoids[];   // [cellIdx * MAX_PER_CELL + slot],  0 < slot < MAX_PER_CELL
 };
 
 #define MAX_PER_CELL 64
 
+
+// Called once per boid, to build the spatial grid. 
+// Each boid finds its cell and appends its index to that cell's list in gridBoids
 void main() {
     uint i = gl_GlobalInvocationID.x;
     if (i >= params.nBoids) return;
 
     // Map position from [-wrapRange, +wrapRange] to [0, 2*wrapRange], then to cell
-    ivec3 cell = ivec3(floor((inBoids[i].position + params.wrapRange) / params.cellSize));
+    ivec3 cell = ivec3(floor((inBoids[i].position.xyz + params.wrapRange) / params.cellSize));
     cell = clamp(cell, ivec3(0), ivec3(int(params.gridDim) - 1));
 
+    // Flatten 3D cell index to 1D
     uint cellIdx = uint(cell.x)
                  + uint(cell.y) * params.gridDim
                  + uint(cell.z) * params.gridDim * params.gridDim;
 
+    // Update grid counts
     uint slot = atomicAdd(gridCounts[cellIdx], 1);
+
+    // Update grid boids
     if (slot < MAX_PER_CELL)
         gridBoids[cellIdx * MAX_PER_CELL + slot] = i;
 }
