@@ -1,6 +1,10 @@
-# Animation
+# Mass Spring Simulation
 
-Implementation of some animation systems.
+Implementation of mass-spring physics simulations (Finite Element Method) on Vulkan compute shaders.
+
+
+https://github.com/user-attachments/assets/b1cf48f7-d806-493e-b96a-2a1c3ced82be
+
 
 
 ## Building
