@@ -24,7 +24,7 @@ Compile shaders separately:
 
 | Friction Off | Friction On |
 | :---: | :---: |
-| <img src="doc/cloth_friction_off.gif" width="400" alt="Cloth friction off"/> | <img src="doc/cloth_friction_on.gif" width="400" alt="Cloth friction on"/> |
+| <img src="doc/cloth_friction_off.gif" width="250" alt="Cloth friction off"/> | <img src="doc/cloth_friction_on.gif" width="250" alt="Cloth friction on"/> |
 
 </div>
 
@@ -33,7 +33,7 @@ Compile shaders separately:
 
 <div align="center">
 
-<img src="doc/jelly.gif" width="400" alt="Jelly demo"/>
+<img src="doc/jelly.gif" width="250" alt="Jelly demo"/>
 
 </div>
 
