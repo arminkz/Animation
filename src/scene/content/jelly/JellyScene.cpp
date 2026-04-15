@@ -8,19 +8,17 @@
 JellyScene::JellyScene(std::shared_ptr<VulkanContext> ctx, std::shared_ptr<SwapChain> swapChain)
     : SinglePassRenderer(std::move(ctx), std::move(swapChain))
 {
-    createSimulation();
     createScenePipelines();
-
-    _jellyModel = std::make_shared<JellyModel>(_ctx, _sim.get());
+    createJellyModel();
     _jellyModel->setPipeline(_jellyPipeline);
     _sceneModels.push_back(_jellyModel);
 
-    _sim->windEnabled    = false;
-    _sim->gravityEnabled = true;
-    _sim->stiffness      = 400.f;
-    _sim->springDamping  = 3.f;
-    _sim->damping        = 0.998f;
-    _sim->substeps       = 16;
+    auto* sim = _jellyModel->getSimulation();
+    sim->windEnabled    = false;
+    sim->gravityEnabled = true;
+    sim->stiffness      = 400.f;
+    sim->springDamping  = 3.f;
+    sim->velocityDamping        = 0.998f;
 
     TurnTableCameraParams cam{};
     cam.target           = glm::vec3(0.f, 3.f, 0.f);
@@ -36,21 +34,21 @@ JellyScene::~JellyScene()
     _jellyPipeline.reset();
 }
 
-void JellyScene::createSimulation()
+void JellyScene::createJellyModel()
 {
     float spacing = 0.6f;
     int resX = 6, resY = 14, resZ = 6;
     float startY = _planeY + (resY - 1) * spacing * 0.5f + 4.f;
-    _sim = std::make_unique<JellySimulation>(_ctx, resX, resY, resZ, spacing,
-                                             glm::vec3(0.f, startY, 0.f));
+    _jellyModel = std::make_shared<JellyModel>(_ctx, resX, resY, resZ, spacing,
+                                               glm::vec3(0.f, startY, 0.f));
 }
 
 void JellyScene::createScenePipelines()
 {
     PipelineParams params;
     params.name                        = "JellyPipeline";
-    params.vertexBindingDescription    = MSParticle::getBindingDescription();
-    params.vertexAttributeDescriptions = MSParticle::getAttributeDescriptions();
+    params.vertexBindingDescription    = JellyVertex::getBindingDescription();
+    params.vertexAttributeDescriptions = JellyVertex::getAttributeDescriptions();
     params.descriptorSetLayouts        = { _sceneDescriptorSets[0]->getDescriptorSetLayout() };
     params.pushConstantRanges          = { {VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(glm::mat4)} };
     params.renderPass                  = _mainRenderPass->getRenderPass();
@@ -67,24 +65,24 @@ void JellyScene::restart()
 {
     vkDeviceWaitIdle(_ctx->device);
 
-    auto savedStiffness    = _sim->stiffness;
-    auto savedSpringDamping = _sim->springDamping;
-    auto savedDamping      = _sim->damping;
-    auto savedSubsteps     = _sim->substeps;
-    auto savedGravity      = _sim->gravityEnabled;
+    auto* sim = _jellyModel->getSimulation();
+    auto savedStiffness     = sim->stiffness;
+    auto savedSpringDamping = sim->springDamping;
+    auto savedDamping       = sim->velocityDamping;
+    auto savedGravity       = sim->gravityEnabled;
 
     _sceneModels.erase(std::remove(_sceneModels.begin(), _sceneModels.end(), _jellyModel), _sceneModels.end());
 
-    createSimulation();
+    createJellyModel();
+    sim = _jellyModel->getSimulation();
+    sim->stiffness      = savedStiffness;
+    sim->springDamping  = savedSpringDamping;
+    sim->velocityDamping        = savedDamping;
+    sim->gravityEnabled = savedGravity;
+    sim->windEnabled    = false;
 
-    _sim->stiffness      = savedStiffness;
-    _sim->springDamping  = savedSpringDamping;
-    _sim->damping        = savedDamping;
-    _sim->substeps       = savedSubsteps;
-    _sim->gravityEnabled = savedGravity;
-    _sim->windEnabled    = false;
+    _physicsAccumulator = 0.f;
 
-    _jellyModel = std::make_shared<JellyModel>(_ctx, _sim.get());
     _jellyModel->setPipeline(_jellyPipeline);
     _sceneModels.push_back(_jellyModel);
 }
@@ -105,6 +103,8 @@ void JellyScene::dispatchCompute(VkCommandBuffer cmd)
 {
     if (_paused) return;
 
+    auto* sim = _jellyModel->getSimulation();
+
     MSCollider plane{};
     plane.type      = static_cast<int32_t>(MSColliderType::Plane);
     plane.position  = glm::vec3(0.f, _planeY, 0.f);
@@ -112,16 +112,39 @@ void JellyScene::dispatchCompute(VkCommandBuffer cmd)
     plane.radius    = 0.f;
     plane.stiffness = _planeStiffness;
     plane.friction  = _planeFriction;
-    _sim->setColliders({ plane });
+    sim->setColliders({ plane });
 
-    float subDt = _dt * _timeScale / static_cast<float>(_sim->substeps);
-    for (int s = 0; s < _sim->substeps; ++s)
+    // Fixed-timestep accumulator. Every substep runs at exactly PHYSICS_DT,
+    // so `(pos - prevPos)` is always accumulated over a constant interval
+    // and frame-rate jitter cannot kick the sim out of equilibrium.
+    _physicsAccumulator += _dt * _timeScale;
+
+    int steps = 0;
+    while (_physicsAccumulator >= PHYSICS_DT && steps < MAX_STEPS_PER_FRAME)
     {
-        _sim->dispatch(cmd, subDt, _sceneInfo.time);
-        if (s < _sim->substeps - 1)
+        sim->dispatch(cmd, PHYSICS_DT, _sceneInfo.time);
+        _physicsAccumulator -= PHYSICS_DT;
+        ++steps;
+
+        // Barrier between consecutive physics substeps only.
+        if (_physicsAccumulator >= PHYSICS_DT && steps < MAX_STEPS_PER_FRAME)
             VulkanHelper::barrierComputeToCompute(cmd);
     }
-    VulkanHelper::barrierComputeToVertex(cmd, _sim->getOutParticleBuffer());
+
+    // If we hit the per-frame cap, drop any leftover accumulated time —
+    // otherwise a hitch would let the sim "catch up" and visibly snap.
+    if (steps == MAX_STEPS_PER_FRAME)
+        _physicsAccumulator = 0.f;
+
+    // Only re-run the render-normals compute pass if physics actually stepped
+    // this frame. Otherwise the previous frame's render vertex buffer is
+    // still valid and can be bound as-is.
+    if (steps > 0)
+    {
+        VulkanHelper::barrierComputeToCompute(cmd);
+        sim->dispatchPreRender(cmd);
+        VulkanHelper::barrierComputeToVertex(cmd, sim->getVertexBuffer());
+    }
 }
 
 void JellyScene::buildUI()
@@ -140,13 +163,14 @@ void JellyScene::buildUI()
     ImGui::SliderFloat("Time Scale", &_timeScale, 0.1f, 5.f);
     ImGui::Unindent(16.0f);
 
+    auto* sim = _jellyModel->getSimulation();
+
     ImGui::Separator();
     ImGui::Text(ICON_FA_WEIGHT_HANGING " Mass Spring");
     ImGui::Indent(16.0f);
-    ImGui::SliderFloat("Stiffness",    &_sim->stiffness,     0.f,   3000.f);
-    ImGui::SliderFloat("Spr. Damping", &_sim->springDamping, 0.f,   20.f);
-    ImGui::SliderFloat("Vel. Damping", &_sim->damping,       0.9f,  1.f);
-    ImGui::SliderInt  ("Substeps",     &_sim->substeps,      1,     32);
+    ImGui::SliderFloat("Stiffness",    &sim->stiffness,     0.f,   3000.f);
+    ImGui::SliderFloat("Spr. Damping", &sim->springDamping, 0.f,   20.f);
+    ImGui::SliderFloat("Vel. Damping", &sim->velocityDamping,       0.9f,  1.f);
     ImGui::Unindent(16.0f);
 
     ImGui::Separator();
@@ -156,6 +180,6 @@ void JellyScene::buildUI()
     ImGui::SliderFloat("Stiffness##p", &_planeStiffness,     100.f, 20000.f);
     ImGui::SliderFloat("Friction##p",  &_planeFriction,      0.f,   2.f);
     ImGui::Unindent(16.0f);
-    
+
     ImGui::End();
 }

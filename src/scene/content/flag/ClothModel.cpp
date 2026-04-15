@@ -29,7 +29,7 @@ void ClothModel::draw(VkCommandBuffer cmd, const Renderer& renderer)
 
     pipeline->bind(cmd);
 
-    VkBuffer vb = _sim->getOutParticleBuffer();
+    VkBuffer vb = _sim->getVertexBuffer();
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &offset);
     vkCmdBindIndexBuffer(cmd, _sim->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);

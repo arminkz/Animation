@@ -6,14 +6,14 @@
 #include "vulkan/DescriptorSet.h"
 #include "vulkan/resources/Buffer.h"
 
-// GPU-side particle: ping-pong buffer, also used directly as vertex buffer.
+// GPU-side particle
 struct MSParticle {
     glm::vec3 position;
     glm::vec3 prevPosition;
     glm::vec3 normal;
-    glm::vec2 uv;
     float invMass;
 
+    // useful if we want to use particles directly as vertices (e.g. in cloth)
     static VkVertexInputBindingDescription getBindingDescription() {
         return { 0, sizeof(MSParticle), VK_VERTEX_INPUT_RATE_VERTEX };
     }
@@ -22,13 +22,12 @@ struct MSParticle {
         return {
             { 0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(MSParticle, position) },
             { 1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(MSParticle, normal)   },
-            { 2, 0, VK_FORMAT_R32G32_SFLOAT,    offsetof(MSParticle, uv)       },
         };
     }
 };
 
 // Per-particle index into the directed spring list
-struct MSParticleMetadata {
+struct MSParticleSprRange {
     uint32_t springStartIndex;
     uint32_t springCount;
 };
@@ -39,8 +38,8 @@ struct MSSpring {
     float restLength, ratio;
 };
 
-// Per-vertex triangle adjacency entry
-struct MSVertexTriMetadata {
+// Per-particle triangle adjacency entry
+struct MSParticleTriRange {
     uint32_t triStartIndex;
     uint32_t triCount;
 };
@@ -65,13 +64,14 @@ struct MSCollider {
 
 // Uniform buffer — must match SimParamsUBO in mass_spring_integrate.comp exactly
 struct MSSimParams {
-    int32_t numParticles;                                // Size
-    float dt, time;                                      // Elapsed / Absolute time
-    float stiffness, velocityDamping, springDamping;     // Mass-spring parameters
-    glm::vec3 windDir;                                   // Wind
-    float windEnabled, windTurbulence, windStrength, windDragCoeff;
-    int32_t gravityEnabled;                              // Gravity
-    int32_t numColliders;                                // Collision
+    int32_t numParticles;                                           // number of particles
+    int32_t numColliders;                                           // number of colliders
+    float dt, time;                                                 // Elapsed / Absolute time
+    float stiffness, velocityDamping, springDamping;                // Mass-spring parameters
+    int32_t gravityEnabled;                                         // Gravity
+    int32_t windEnabled;                                            // Wind
+    float windTurbulence, windStrength, windDragCoeff;              
+    glm::vec3 windDir;                                   
 };
 
 
@@ -82,10 +82,9 @@ public:
 
     // Simulation parameters
     // used to fill MassSpringSimParams UBO each frame by the scene
-    float stiffness      = 1000.f;
-    float damping        = 0.98f;
-    float springDamping  = 7.f;
-    int   substeps       = 8;
+    float stiffness        = 1000.f;
+    float velocityDamping  = 0.98f;
+    float springDamping    = 7.f;
     bool  gravityEnabled = true;
     bool  windEnabled    = true;
     float windStrength   = 30.f;
@@ -100,40 +99,37 @@ public:
     // call before the first dispatch each frame (or whenever they change)
     void setColliders(const std::vector<MSCollider>& colliders);
 
-    // The last-written particle buffer — used as vertex buffer for rendering
-    VkBuffer getOutParticleBuffer() const { return _particleBuffers[_currentIn]->getBuffer(); }
-    VkBuffer getIndexBuffer() const { return _indexBuffer->getBuffer(); }
-    uint32_t getIndexCount() const { return _indexCount; }
+    VkBuffer getParticleBuffer(int i) const { return _particleBuffers[i]->getBuffer(); }
+    VkBuffer getLastParticleBuffer()  const { return _particleBuffers[_currentIn]->getBuffer(); }
 
 protected:
     MassSpringSimulation(std::shared_ptr<VulkanContext> ctx);
 
-    // Called by subclass constructor after building topology
+    // Called by subclass constructor after building topology.
+    // `triangleIndices` is used only to build the per-vertex triangle adjacency
+    // for wind-drag normals. Subclasses that render must upload their own index buffer.
     void init(const std::vector<MSParticle>& particles,
-              const std::vector<MSParticleMetadata>& metadata,
+              const std::vector<MSParticleSprRange>& sprRanges,
               const std::vector<MSSpring>& directedSprings,
-              const std::vector<uint32_t>& indices,
-              const std::string& shaderSpvPath);
+              const std::vector<uint32_t>& triangleIndices);
 
     std::shared_ptr<VulkanContext> _ctx;
-    uint32_t _numParticles = 0;
-    uint32_t _indexCount = 0;
 
+    int _currentIn = 0;  // ping-pong index
+    
 private:
-    std::unique_ptr<Buffer> _paramsBuffer;
-    std::unique_ptr<Buffer> _particleBuffers[2];      // ping-pong
-    std::unique_ptr<Buffer> _particleMetadataBuffer;
-    std::unique_ptr<Buffer> _springsBuffer;
-    std::unique_ptr<Buffer> _vertexTriMetaBuffer;
-    std::unique_ptr<Buffer> _trianglesBuffer;
-    std::unique_ptr<Buffer> _indexBuffer;
-
-    std::unique_ptr<Buffer> _colliderBuffer;
+    uint32_t _numParticles = 0;
+    uint32_t _numColliders = 0;
     static constexpr int MAX_COLLIDERS = 16;
-    int32_t _numColliders = 0;
 
+    std::unique_ptr<Buffer> _particleBuffers[2]; // ping-pong
+    std::unique_ptr<Buffer> _sprRangesBuffer;
+    std::unique_ptr<Buffer> _springsBuffer;
+    std::unique_ptr<Buffer> _triRangesBuffer;
+    std::unique_ptr<Buffer> _trianglesBuffer;
+    std::unique_ptr<Buffer> _colliderBuffer;
+    std::unique_ptr<Buffer> _paramsBuffer;
+    
     std::unique_ptr<DescriptorSet> _descriptorSets[2];
     std::unique_ptr<ComputePipeline> _computePipeline;
-
-    int _currentIn = 0; //ping or pong     
 };

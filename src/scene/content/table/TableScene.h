@@ -38,6 +38,7 @@ private:
 
     TimePoint _lastFrameTime = std::chrono::high_resolution_clock::now();
     float _dt = 0.f;
+    int _substeps = 8;
     bool _paused = false;
     bool _wireframe = false;
 };

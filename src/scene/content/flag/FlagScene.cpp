@@ -38,8 +38,8 @@ void FlagScene::createScenePipelines()
 {
     PipelineParams params;
     params.name = "ClothPipeline";
-    params.vertexBindingDescription = MSParticle::getBindingDescription();
-    params.vertexAttributeDescriptions = MSParticle::getAttributeDescriptions();
+    params.vertexBindingDescription = ClothVertex::getBindingDescription();
+    params.vertexAttributeDescriptions = ClothVertex::getAttributeDescriptions();
     params.descriptorSetLayouts = {
         _sceneDescriptorSets[0]->getDescriptorSetLayout(),
         _clothModel->getDescriptorSet()->getDescriptorSetLayout()
@@ -102,17 +102,19 @@ void FlagScene::dispatchCompute(VkCommandBuffer cmd)
 
     ClothSimulation* sim = _clothModel->getSimulation();
 
-    float subDt = _dt / static_cast<float>(sim->substeps);
+    float subDt = _dt / static_cast<float>(_substeps);
 
-    for (int s = 0; s < sim->substeps; ++s)
+    for (int s = 0; s < _substeps; ++s)
     {
         sim->dispatch(cmd, subDt, _sceneInfo.time);
 
-        if (s < sim->substeps - 1)
+        if (s < _substeps - 1)
             VulkanHelper::barrierComputeToCompute(cmd);
     }
 
-    VulkanHelper::barrierComputeToVertex(cmd, sim->getOutParticleBuffer());
+    VulkanHelper::barrierComputeToCompute(cmd);
+    sim->dispatchPreRender(cmd);
+    VulkanHelper::barrierComputeToVertex(cmd, sim->getVertexBuffer());
 }
 
 
@@ -132,9 +134,10 @@ void FlagScene::buildUI()
     ImGui::Separator();
     ImGui::Text(ICON_FA_FLAG  " Flag");
     ImGui::Indent(16.0f);
-    static const char* textureNames[] = { "Iranian Flag", "US Flag", "Israeli Flag"};
+    static const char* textureNames[] = { "Iranian Flag", "Canadian Flag", "US Flag", "Israeli Flag"};
     static const char* texturePaths[] = {
         "textures/flag_iran.png",
+        "textures/flag_canada.png",
         "textures/flag_us.png",
         "textures/flag_israel.png"
     };
@@ -151,8 +154,8 @@ void FlagScene::buildUI()
     auto& sim = *_clothModel->getSimulation();
     ImGui::SliderFloat("Stiffness",       &sim.stiffness,     0.f, 2000.f);
     ImGui::SliderFloat("Spring Damping",  &sim.springDamping, 0.f, 20.f);
-    ImGui::SliderFloat("Velocity Damping",&sim.damping,       0.f, 1.f);
-    ImGui::SliderInt  ("Substeps",        &sim.substeps,      1,   20);
+    ImGui::SliderFloat("Velocity Damping",&sim.velocityDamping, 0.f, 1.f);
+    ImGui::SliderInt  ("Substeps",        &_substeps,           1,   20);
     ImGui::Unindent(16.0f);
 
     ImGui::Separator();

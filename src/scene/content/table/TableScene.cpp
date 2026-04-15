@@ -18,10 +18,10 @@ TableScene::TableScene(std::shared_ptr<VulkanContext> ctx, std::shared_ptr<SwapC
     // Tune simulation for free-falling cloth
     auto& sim = *_clothModel->getSimulation();
     sim.windEnabled = false;
-    sim.damping = 0.98f; 
+    sim.velocityDamping = 0.98f;
     sim.springDamping = 2.0f;
     sim.stiffness = 800.f;
-    sim.substeps = 12;
+    _substeps = 12;
 
     // Setup camera
     TurnTableCameraParams cam{};
@@ -60,8 +60,8 @@ void TableScene::createScenePipelines()
     // Cloth pipeline
     PipelineParams clothParams;
     clothParams.name                       = "TableClothPipeline";
-    clothParams.vertexBindingDescription   = MSParticle::getBindingDescription();
-    clothParams.vertexAttributeDescriptions = MSParticle::getAttributeDescriptions();
+    clothParams.vertexBindingDescription   = ClothVertex::getBindingDescription();
+    clothParams.vertexAttributeDescriptions = ClothVertex::getAttributeDescriptions();
     clothParams.descriptorSetLayouts       = {
         _sceneDescriptorSets[0]->getDescriptorSetLayout(),
         _clothModel->getDescriptorSet()->getDescriptorSetLayout()
@@ -110,9 +110,9 @@ void TableScene::restartCloth()
     // Snapshot current sim parameters before destroying the old cloth
     auto& oldSim        = *_clothModel->getSimulation();
     auto  savedStiffness     = oldSim.stiffness;
-    auto  savedDamping       = oldSim.damping;
+    auto  savedDamping       = oldSim.velocityDamping;
     auto  savedSpringDamping = oldSim.springDamping;
-    auto  savedSubsteps      = oldSim.substeps;
+    auto  savedSubsteps      = _substeps;
     auto  savedWindEnabled   = oldSim.windEnabled;
     auto  savedWindStrength  = oldSim.windStrength;
     auto  savedWindTurbulence= oldSim.windTurbulence;
@@ -130,9 +130,9 @@ void TableScene::restartCloth()
     // Restore saved parameters
     auto& sim           = *_clothModel->getSimulation();
     sim.stiffness       = savedStiffness;
-    sim.damping         = savedDamping;
+    sim.velocityDamping = savedDamping;
     sim.springDamping   = savedSpringDamping;
-    sim.substeps        = savedSubsteps;
+    _substeps           = savedSubsteps;
     sim.windEnabled     = savedWindEnabled;
     sim.windStrength    = savedWindStrength;
     sim.windTurbulence  = savedWindTurbulence;
@@ -169,14 +169,16 @@ void TableScene::dispatchCompute(VkCommandBuffer cmd)
     sphere.friction  = _colliderFriction;
     sim->setColliders({ sphere });
 
-    float subDt = _dt * _timeScale / static_cast<float>(sim->substeps);
-    for (int s = 0; s < sim->substeps; ++s)
+    float subDt = _dt * _timeScale / static_cast<float>(_substeps);
+    for (int s = 0; s < _substeps; ++s)
     {
         sim->dispatch(cmd, subDt, _sceneInfo.time);
-        if (s < sim->substeps - 1)
+        if (s < _substeps - 1)
             VulkanHelper::barrierComputeToCompute(cmd);
     }
-    VulkanHelper::barrierComputeToVertex(cmd, sim->getOutParticleBuffer());
+    VulkanHelper::barrierComputeToCompute(cmd);
+    sim->dispatchPreRender(cmd);
+    VulkanHelper::barrierComputeToVertex(cmd, sim->getVertexBuffer());
 }
 
 void TableScene::buildUI()
@@ -210,8 +212,8 @@ void TableScene::buildUI()
     ImGui::Indent(16.0f);
     ImGui::SliderFloat("Stiffness",        &sim.stiffness,      0.f, 3000.f);
     ImGui::SliderFloat("Spring Damping",   &sim.springDamping,  0.f, 20.f);
-    ImGui::SliderFloat("Velocity Damping", &sim.damping,        0.f, 1.f);
-    ImGui::SliderInt  ("Substeps",         &sim.substeps,       1,   20);
+    ImGui::SliderFloat("Velocity Damping", &sim.velocityDamping, 0.f, 1.f);
+    ImGui::SliderInt  ("Substeps",         &_substeps,           1,   20);
     ImGui::Unindent(16.0f);
 
     ImGui::Separator();

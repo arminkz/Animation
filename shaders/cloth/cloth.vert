@@ -23,8 +23,8 @@ layout(location = 2) out vec2 fragTexCoord;
 void main() {
     vec4 worldPos = pc.model * vec4(inPosition, 1.0);
     worldPosition = worldPos.xyz;
-    worldNormal   = normalize((pc.model * vec4(inNormal, 0.0)).xyz);
-    fragTexCoord  = inTexCoord;
+    worldNormal = normalize((pc.model * vec4(inNormal, 0.0)).xyz);
+    fragTexCoord = inTexCoord;
 
     gl_Position = si.proj * si.view * worldPos;
 }

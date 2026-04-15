@@ -11,11 +11,10 @@ struct Particle {
     vec3 position;
     vec3 prevPosition;
     vec3 normal;
-    vec2 uv;
     float invMass;
 };
 
-struct ParticleMetadata {
+struct ParticleSprRange {
     uint springStartIndex;
     uint springCount;
 };
@@ -25,7 +24,7 @@ struct Spring {
     float restLength, ratio;
 };
 
-struct VertexTriMetadata {
+struct ParticleTriRange {
     uint triStartIndex;
     uint triCount;
 };
@@ -49,28 +48,29 @@ struct Collider {
 
 layout(scalar, set = 0, binding = 0) uniform SimParamsUBO {
     int   numParticles;                                    // Size
+    int   numColliders;                                    // Collision
     float dt, time;                                        // Elapsed / Absolute time
     float stiffness, velocityDamping, springDamping;       // Mass-spring parameters
-    vec3  windDir;                                         // Wind
-    float windEnabled, windTurbulence, windStrength, windDragCoeff;
     int   gravityEnabled;                                  // Gravity
-    int   numColliders;                                    // Collision
+    int   windEnabled;
+    float windTurbulence, windStrength, windDragCoeff;
+    vec3  windDir;                                         // Wind
 } params;
 
 layout(scalar, set = 0, binding = 1) readonly buffer ParticleBufferIn {
     Particle particlesIn[];
 };
 
-layout(scalar, set = 0, binding = 2) readonly buffer ParticleMetadataBuffer {
-    ParticleMetadata particleMetadata[];
+layout(scalar, set = 0, binding = 2) readonly buffer ParticleSprRangeBuffer {
+    ParticleSprRange particleSprRanges[];
 };
 
 layout(scalar, set = 0, binding = 3) readonly buffer SpringBuffer {
     Spring springs[];
 };
 
-layout(scalar, set = 0, binding = 4) readonly buffer VertexTriMetaBuffer {
-    VertexTriMetadata vertexTriMeta[];
+layout(scalar, set = 0, binding = 4) readonly buffer ParticleTriMetaBuffer {
+    ParticleTriRange particleTriRanges[];
 };
 
 layout(scalar, set = 0, binding = 5) readonly buffer TriangleBuffer {
@@ -122,7 +122,7 @@ void main() {
     }
 
     // Spring forces via adjacency list
-    ParticleMetadata meta = particleMetadata[id];
+    ParticleSprRange meta = particleSprRanges[id];
     for (uint j = 0; j < meta.springCount; ++j) {
         Spring s  = springs[meta.springStartIndex + j];
         vec3 pb = particlesIn[s.neighborIndex].position;
@@ -206,13 +206,13 @@ void main() {
         }
     }
 
-    // Verlet integration
-    vec3 vel    = (p.position - p.prevPosition) * params.velocityDamping;
+    // Integration (Verlet)
+    vec3 vel = (p.position - p.prevPosition) * params.velocityDamping;
     vec3 newPos = p.position + vel + acc * (params.dt * params.dt);
 
     // Recompute normal from triangle adjacency list (topology-agnostic)
     vec3 vNormal = vec3(0.0);
-    VertexTriMetadata triMeta = vertexTriMeta[id];
+    ParticleTriRange triMeta = particleTriRanges[id];
     for (uint j = 0; j < triMeta.triCount; ++j) {
         Triangle tri = triangles[triMeta.triStartIndex + j];
         vec3 a = particlesIn[tri.a].position;
@@ -227,6 +227,5 @@ void main() {
     particlesOut[id].position     = newPos;
     particlesOut[id].prevPosition = p.position;
     particlesOut[id].normal       = vNormal;
-    particlesOut[id].uv           = p.uv;
     particlesOut[id].invMass      = p.invMass;
 }

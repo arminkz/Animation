@@ -2,7 +2,6 @@
 #include "scene/content/flag/FlagScene.h"
 #include "scene/content/table/TableScene.h"
 #include "scene/content/jelly/JellyScene.h"
-#include "scene/content/boid/BoidScene.h"
 
 FramePresenter::FramePresenter(std::shared_ptr<VulkanContext> ctx)
     : _ctx(std::move(ctx))
@@ -241,7 +240,7 @@ void FramePresenter::present() {
 
 void FramePresenter::buildSceneSelector()
 {
-    static const char* sceneNames[] = { "Flag", "Table", "Jelly", "Boid" };
+    static const char* sceneNames[] = { "Flag", "Table", "Jelly" };
 
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_Always);
     ImGui::SetNextWindowSize(ImVec2(300, 60), ImGuiCond_Always);
@@ -259,10 +258,9 @@ void FramePresenter::switchScene(int index)
     vkDeviceWaitIdle(_ctx->device);
     spdlog::info("Switching scene...");
     switch (index) {
-        case 0: _renderer = std::make_unique<FlagScene>(_ctx, _swapChain);  break;
+        case 0: _renderer = std::make_unique<FlagScene>(_ctx, _swapChain); break;
         case 1: _renderer = std::make_unique<TableScene>(_ctx, _swapChain); break;
         case 2: _renderer = std::make_unique<JellyScene>(_ctx, _swapChain); break;
-        case 3: _renderer = std::make_unique<BoidScene>(_ctx, _swapChain); break;
     }
 }
 

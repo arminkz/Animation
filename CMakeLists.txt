@@ -58,7 +58,6 @@ file(GLOB SOURCES
     src/scene/content/flag/*.cpp
     src/scene/content/table/*.cpp
     src/scene/content/jelly/*.cpp
-    src/scene/content/boid/*.cpp
     src/scene/physics/*.cpp
     src/vulkan/*.cpp
     src/vulkan/resources/*.cpp

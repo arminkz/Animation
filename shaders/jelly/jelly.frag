@@ -9,11 +9,13 @@ layout(set = 0, binding = 0) uniform SceneInfo {
 } si;
 
 layout(location = 0) in  vec3 worldPosition;
+layout(location = 1) in  vec3 worldNormal;
 layout(location = 0) out vec4 outColor;
 
 void main() {
-    // Flat normal from position derivatives — correct at all edges/corners, no vertex normal needed
-    vec3 N = normalize(cross(dFdx(worldPosition), dFdy(worldPosition)));
+    // Face-local normal computed per-face in the jelly_pre_render compute pass —
+    // cube edges/corners stay sharp without needing screen-space derivatives.
+    vec3 N = normalize(worldNormal);
     vec3 lightDir = normalize(vec3(1.0, 2.0, 1.0));
 
     // Two-sided diffuse

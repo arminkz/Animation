@@ -1,0 +1,86 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 64) in;
+
+// ------------------------------------------------------------
+// Data structures — must match C++ definitions exactly
+// ------------------------------------------------------------
+
+struct Particle {
+    vec3 position;
+    vec3 prevPosition;
+    vec3 normal;
+    float invMass;
+};
+
+struct ParticleTriRange {
+    uint triStartIndex;
+    uint triCount;
+};
+
+struct Triangle {
+    uint a, b, c;
+};
+
+struct JellyVertex {
+    vec3 position;
+    vec3 normal;
+    vec2 uv;
+    uint physicsIdx;
+};
+
+// ------------------------------------------------------------
+// Bindings
+// ------------------------------------------------------------
+
+layout(scalar, set = 0, binding = 0) readonly buffer particlesBuffer {
+    Particle particles[];
+};
+
+layout(scalar, set = 0, binding = 1) readonly buffer particleTriRangeBuffer {
+    ParticleTriRange particleTriRanges[];
+};
+
+layout(scalar, set = 0, binding = 2) readonly buffer triangleBuffer {
+    Triangle triangles[];
+};
+
+// Read-write: we read physicsIdx, and write back position + normal.
+layout(scalar, set = 0, binding = 3) buffer vertexBuffer {
+    JellyVertex renderVerts[];
+};
+
+layout(push_constant) uniform PC {
+    uint numRenderVerts;
+} pc;
+
+// ------------------------------------------------------------
+// Main
+// ------------------------------------------------------------
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= pc.numRenderVerts) return;
+
+    uint srcIdx = renderVerts[id].physicsIdx;
+    vec3 pos = particles[srcIdx].position;
+
+    // Face-local normal — adjacency list only contains triangles from the
+    // same cube face, so cube edges/corners get a sharp per-face normal.
+    vec3 n = vec3(0.0);
+    ParticleTriRange m = particleTriRanges[id];
+    for (uint j = 0; j < m.triCount; ++j) {
+        Triangle t = triangles[m.triStartIndex + j];
+        vec3 a = particles[t.a].position;
+        vec3 b = particles[t.b].position;
+        vec3 c = particles[t.c].position;
+        n += cross(b - a, c - a);
+    }
+    float L = length(n);
+    if (L > 1e-6) n /= L;
+
+    renderVerts[id].position = pos;
+    renderVerts[id].normal   = n;
+    // .uv and .physicsIdx left untouched
+}

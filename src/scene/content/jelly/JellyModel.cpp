@@ -1,8 +1,11 @@
 #include "JellyModel.h"
 #include "core/SinglePassRenderer.h"
 
-JellyModel::JellyModel(std::shared_ptr<VulkanContext> ctx, JellySimulation* sim)
-    : Model(ctx, "Jelly", nullptr), _sim(sim)
+JellyModel::JellyModel(std::shared_ptr<VulkanContext> ctx,
+                       int resX, int resY, int resZ,
+                       float spacing, glm::vec3 center)
+    : Model(ctx, "Jelly", nullptr)
+    , _sim(std::make_unique<JellySimulation>(ctx, resX, resY, resZ, spacing, center))
 {
 }
 
@@ -13,7 +16,7 @@ void JellyModel::draw(VkCommandBuffer cmd, const Renderer& renderer)
 
     pipeline->bind(cmd);
 
-    VkBuffer     vb     = _sim->getOutParticleBuffer();
+    VkBuffer     vb     = _sim->getVertexBuffer();
     VkDeviceSize offset = 0;
     vkCmdBindVertexBuffers(cmd, 0, 1, &vb, &offset);
     vkCmdBindIndexBuffer(cmd, _sim->getIndexBuffer(), 0, VK_INDEX_TYPE_UINT32);

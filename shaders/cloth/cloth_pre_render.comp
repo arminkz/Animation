@@ -1,0 +1,38 @@
+#version 450
+#extension GL_EXT_scalar_block_layout : require
+
+layout(local_size_x = 64) in;
+
+struct Particle {
+    vec3  position;
+    vec3  prevPosition;
+    vec3  normal;
+    float invMass;
+};
+
+struct ClothVertex {
+    vec3 position;
+    vec3 normal;
+    vec2 uv;      // static — left untouched
+};
+
+layout(scalar, set = 0, binding = 0) readonly buffer particlesBuffer {
+    Particle particles[];
+};
+
+layout(scalar, set = 0, binding = 1) buffer vertexBuffer {
+    ClothVertex vertices[];
+};
+
+layout(push_constant) uniform PC {
+    uint numVertices;
+} pc;
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    if (id >= pc.numVertices) return;
+
+    vertices[id].position = particles[id].position;
+    vertices[id].normal   = particles[id].normal;
+    // uv is static — written once at init, never touched here
+}
